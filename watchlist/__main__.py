@@ -36,11 +36,11 @@ def main(name):
                     old_item = Item.query.is_uuid(wi.uuid).get_one()
                     if old_item:
                         if new_item.price < old_item.price:
-                            echo.indent("price has gone down to {}", new.item.body.price)
+                            echo.indent("price has gone down to {}", new_item.body.price)
                             email.append(old_item, new_item)
 
                         elif new_item.price > old_item.price:
-                            echo.indent("price has gone up to {}", new.item.body.price)
+                            echo.indent("price has gone up to {}", new_item.body.price)
                             email.append(old_item, new_item)
 
                     else:
