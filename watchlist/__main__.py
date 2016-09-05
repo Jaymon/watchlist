@@ -60,6 +60,7 @@ def main(name):
     except Exception as e:
         exc_type, exc_value, exc_traceback = sys.exc_info()
         errors.append((e, (exc_type, exc_value, exc_traceback)))
+        echo.exception(e)
 
     finally:
         if errors:
