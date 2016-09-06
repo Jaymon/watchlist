@@ -1,6 +1,10 @@
 from __future__ import unicode_literals
 import sys
 import traceback
+import time
+import random
+import logging
+import sys
 
 from captain import echo, exit as console, ArgError
 from captain.decorators import arg, args
@@ -9,6 +13,15 @@ from wishlist.core import Wishlist
 from watchlist import __version__
 from watchlist.models import Email, Item
 from watchlist.email import Email as ErrorEmail
+
+
+# configure logging, for debugging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+log_handler = logging.StreamHandler(stream=sys.stderr)
+log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+log_handler.setFormatter(log_formatter)
+logger.addHandler(log_handler)
 
 
 @arg('name', help="the name of the wishlist")
@@ -54,6 +67,11 @@ def main(name):
 
                     echo.err("{}. Failed!", i)
                     echo.exception(e)
+
+                if (i % 25) == 0:
+                    sleep_count = random.randint(1, 5)
+                    echo.h3("Sleeping for {} seconds".format(sleep_count))
+                    time.sleep(sleep_count)
 
             email.send()
 
