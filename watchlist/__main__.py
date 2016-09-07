@@ -46,7 +46,7 @@ def main(name):
 
                     echo.out("{}. {}", i, wi.title)
 
-                    old_item = Item.query.is_uuid(wi.uuid).get_one()
+                    old_item = Item.query.is_uuid(wi.uuid).last()
                     if old_item:
                         if new_item.price < old_item.price:
                             echo.indent("price has gone down to {}", new_item.body.price)
