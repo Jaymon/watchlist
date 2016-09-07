@@ -49,17 +49,17 @@ def main(name):
                     old_item = Item.query.is_uuid(wi.uuid).last()
                     if old_item:
                         if new_item.price < old_item.price:
-                            echo.indent("price has gone down to {}".format(new_item.price))
                             email.append(old_item, new_item)
+                            echo.indent("price has gone down to {}".format(new_item.price))
 
                         elif new_item.price > old_item.price:
-                            echo.indent("price has gone up to {}".format(new_item.price))
                             email.append(old_item, new_item)
+                            echo.indent("price has gone up to {}".format(new_item.price))
 
                     else:
                         # we haven't seen this item previously
-                        echo.indent("this is a new item")
                         new_item.save()
+                        echo.indent("this is a new item")
 
                 except Exception as e:
                     exc_type, exc_value, exc_traceback = sys.exc_info()
