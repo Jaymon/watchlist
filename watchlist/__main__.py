@@ -9,6 +9,7 @@ import sys
 from captain import echo, exit as console, ArgError
 from captain.decorators import arg, args
 from wishlist.core import Wishlist
+from wishlist.browser import RecoverableCrash
 
 from watchlist import __version__
 from watchlist.models import Email, Item
@@ -25,76 +26,97 @@ logger.addHandler(log_handler)
 
 
 @arg('name', help="the name of the wishlist")
-def main(name):
+@arg('--page', dest="current_page", type=int, default=0, help="The Wishlist page you want to start on")
+def main(name, current_page):
     """go through and check wishlist against previous entries"""
 
     errors = []
-    try:
-        with Wishlist.lifecycle() as w:
-            email = Email(name)
+    crash_count = 0
+    max_crash_count = 5
+    while crash_count < max_crash_count:
+        try:
+            with Wishlist.open() as w:
+                email = Email(name)
 
-            for i, wi in enumerate(w.get(name), 1):
-                try:
-                    new_item = Item(
-                        uuid=wi.uuid,
-                        body=wi.jsonable(),
-                        price=wi.price
-                    )
+                for i, wi in enumerate(w.get(name, current_page), 1):
+                    try:
+                        new_item = Item(
+                            uuid=wi.uuid,
+                            body=wi.jsonable(),
+                            price=wi.price
+                        )
 
-                    if not new_item.price:
-                        new_item.price = wi.marketplace_price
+                        if not new_item.price:
+                            new_item.price = wi.marketplace_price
 
-                    echo.out("{}. {}", i, wi.title)
+                        echo.out("{}. {}", i, wi.title)
 
-                    old_item = Item.query.is_uuid(wi.uuid).last()
-                    if old_item:
-                        if new_item.price < old_item.price:
-                            email.append(old_item, new_item)
-                            echo.indent("price has gone down to {}".format(new_item.price))
+                        old_item = Item.query.is_uuid(wi.uuid).last()
+                        if old_item:
+                            if new_item.price < old_item.price:
+                                email.append(old_item, new_item)
+                                echo.indent("price has gone down to {}".format(new_item.price))
 
-                        elif new_item.price > old_item.price:
-                            email.append(old_item, new_item)
-                            echo.indent("price has gone up to {}".format(new_item.price))
+                            elif new_item.price > old_item.price:
+                                email.append(old_item, new_item)
+                                echo.indent("price has gone up to {}".format(new_item.price))
 
-                    else:
-                        # we haven't seen this item previously
-                        new_item.save()
-                        echo.indent("this is a new item")
+                        else:
+                            # we haven't seen this item previously
+                            new_item.save()
+                            echo.indent("this is a new item")
 
-                except Exception as e:
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    errors.append((e, (exc_type, exc_value, exc_traceback)))
+                    except KeyboardInterrupt:
+                        raise
 
-                    echo.err("{}. Failed!", i)
-                    echo.exception(e)
+                    except Exception as e:
+                        exc_type, exc_value, exc_traceback = sys.exc_info()
+                        errors.append((e, (exc_type, exc_value, exc_traceback)))
 
-                if (i % 25) == 0:
-                    sleep_count = random.randint(1, 5)
-                    echo.h3("Sleeping for {} seconds".format(sleep_count))
-                    time.sleep(sleep_count)
+                        echo.err("{}. Failed!", i)
+                        echo.exception(e)
 
-            email.send()
+                    finally:
+                        current_page = w.current_page
 
-    except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        errors.append((e, (exc_type, exc_value, exc_traceback)))
-        echo.exception(e)
+                        if (i % 25) == 0:
+                            sleep_count = random.randint(1, 5)
+                            echo.h3("Sleeping for {} seconds".format(sleep_count))
+                            time.sleep(sleep_count)
 
-    finally:
-        if errors:
-            em = ErrorEmail()
-            em.subject = "{} errors raised".format(len(errors))
-            body = []
+                email.send()
 
-            for e, sys_exc_info in errors:
-                exc_type, exc_value, exc_traceback = sys_exc_info
-                stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                body.append(e.message)
-                body.append("".join(stacktrace))
-                body.append("")
+        except KeyboardInterrupt:
+            break
 
-            em.body_text = "\n".join(body)
-            em.send()
+        except RecoverableCrash:
+            crash_count += 1
+            if crash_count > max_crash_count:
+                raise
+
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            errors.append((e, (exc_type, exc_value, exc_traceback)))
+            echo.exception(e)
+
+        else:
+            echo.out("Done with wishlist, {} total pages", current_page)
+            break
+
+    if errors:
+        em = ErrorEmail()
+        em.subject = "{} errors raised".format(len(errors))
+        body = []
+
+        for e, sys_exc_info in errors:
+            exc_type, exc_value, exc_traceback = sys_exc_info
+            stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            body.append(e.message)
+            body.append("".join(stacktrace))
+            body.append("")
+
+        em.body_text = "\n".join(body)
+        em.send()
 
 
 if __name__ == "__main__":
