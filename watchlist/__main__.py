@@ -30,13 +30,13 @@ logger.addHandler(log_handler)
 def main(name, current_page):
     """go through and check wishlist against previous entries"""
 
+    email = Email(name)
     errors = []
     crash_count = 0
-    max_crash_count = 5
+    max_crash_count = 10
     while crash_count < max_crash_count:
         try:
             with Wishlist.open() as w:
-                email = Email(name)
 
                 for i, wi in enumerate(w.get(name, current_page), 1):
                     try:
@@ -55,11 +55,17 @@ def main(name, current_page):
                         if old_item:
                             if new_item.price < old_item.price:
                                 email.append(old_item, new_item)
-                                echo.indent("price has gone down to {}".format(new_item.price))
+                                echo.indent("price has gone down to {} from {}".format(
+                                    new_item.price,
+                                    old_item.price
+                                ))
 
                             elif new_item.price > old_item.price:
                                 email.append(old_item, new_item)
-                                echo.indent("price has gone up to {}".format(new_item.price))
+                                echo.indent("price has gone up to {} from {}".format(
+                                    new_item.price,
+                                    old_item.price
+                                ))
 
                         else:
                             # we haven't seen this item previously
@@ -79,12 +85,10 @@ def main(name, current_page):
                     finally:
                         current_page = w.current_page
 
-                        if (i % 25) == 0:
-                            sleep_count = random.randint(1, 5)
-                            echo.h3("Sleeping for {} seconds".format(sleep_count))
-                            time.sleep(sleep_count)
-
-                email.send()
+                    if (i % 25) == 0:
+                        sleep_count = random.randint(1, 5)
+                        echo.h3("Sleeping for {} seconds".format(sleep_count))
+                        time.sleep(sleep_count)
 
         except KeyboardInterrupt:
             break
@@ -118,6 +122,7 @@ def main(name, current_page):
         em.body_text = "\n".join(body)
         em.send()
 
+    email.send()
 
 if __name__ == "__main__":
     console()
