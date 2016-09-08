@@ -15,7 +15,26 @@ def tearDownModule():
 
 
 class EmailTest(TestCase):
-    def test_unicode(self):
+    def test_email_unicode(self):
+        em = Email("foo")
+        body = {
+            "url": "http://foo.com",
+            #"title": "foo",
+            "title": "\u2713",
+            "image": "http://foo.com/bar.jpg",
+            "price": 12.34
+        }
+        it = Item(body=body)
+
+        em.append(it, it)
+
+        with self.assertRaises(UnicodeEncodeError):
+            str(em.body_html)
+
+        #em.send()
+        str(em.body_html.encode("utf8"))
+
+    def test_unicode_email_item(self):
         body = {
             "url": "http://foo.com",
             #"title": "foo",

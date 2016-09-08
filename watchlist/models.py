@@ -23,12 +23,12 @@ class Email(BaseEmail):
         lines = []
         lines.append("<h2>Lower Priced</h2>")
         for ei in self.cheaper_items:
-            lines.append(str(ei))
+            lines.append("{}".format(ei))
             lines.append("<hr>")
 
         lines.append("<h2>Higher Priced</h2>")
         for ei in self.richer_items:
-            lines.append(str(ei))
+            lines.append("{}".format(ei))
             lines.append("<hr>")
 
         return "\n".join(lines)
