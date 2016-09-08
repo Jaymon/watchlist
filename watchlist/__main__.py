@@ -85,10 +85,10 @@ def main(name, current_page):
                     finally:
                         current_page = w.current_page
 
-                    if (i % 25) == 0:
-                        sleep_count = random.randint(1, 5)
-                        echo.h3("Sleeping for {} seconds".format(sleep_count))
-                        time.sleep(sleep_count)
+#                     if (i % 25) == 0:
+#                         sleep_count = random.randint(1, 5)
+#                         echo.h3("Sleeping for {} seconds".format(sleep_count))
+#                         time.sleep(sleep_count)
 
         except KeyboardInterrupt:
             break

@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import testdata
 
-from watchlist.models import Item, Email
+from watchlist.models import Item, Email, EmailItem
 
 def setUpModule():
     Item.interface.delete_tables(disable_protection=True)
@@ -15,6 +15,21 @@ def tearDownModule():
 
 
 class EmailTest(TestCase):
+    def test_unicode(self):
+        body = {
+            "url": "http://foo.com",
+            #"title": "foo",
+            "title": "\u2713",
+            "image": "http://foo.com/bar.jpg",
+            "price": 12.34
+        }
+
+        it = Item(body=body)
+        ei = EmailItem(it, it)
+        ei_str = str(ei) # if no error is raised, we pass!
+        #pout.v(type(ei_str), ei_str)
+        #print ei_str
+
     def test_body(self):
         uuid = testdata.get_ascii(16),
         body = {

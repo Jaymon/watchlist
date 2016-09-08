@@ -6,6 +6,7 @@ import sendgrid
 from bs4 import BeautifulSoup
 
 from .email import Email as BaseEmail
+from .compat import *
 
 
 class Email(BaseEmail):
@@ -46,6 +47,7 @@ class Email(BaseEmail):
     def __len__(self):
         return len(self.cheaper_items) + len(self.richer_items)
 
+    def __nonzero__(self): return self.__bool__() # 2
     def __bool__(self):
         return len(self) > 0
 
@@ -59,33 +61,40 @@ class EmailItem(object):
         self.old_item = old_item
         self.new_item = new_item
 
-    def __str__(self):
+    def __unicode__(self):
         old_item = self.old_item
         new_item = self.new_item
+
+        url = new_item.body["url"]
         lines = [
             "<table>",
             "<tr>",
             "  <td><a href=\"{}\"><img src=\"{}\"></a></td>".format(
-                new_item.body["url"],
+                url,
                 new_item.body["image"]
             ),
             "  <td>"
             "    <h3><a href=\"{}\">{}</a></h3>".format(
-                new_item.body["url"],
+                url,
                 new_item.body["title"]
             ),
             "    <p>is now {}, previously was {}</p>".format(
-                old_item.body["price"],
-                new_item.body["price"]
+                new_item.body["price"],
+                old_item.body["price"]
             ),
             "    <p>{}</p>".format(new_item.body.get("comment", "")),
             "  </td>",
             "</tr>",
             "</table>",
-            #"<hr>",
         ]
 
         return "\n".join(lines)
+
+    def __str__(self):
+        if is_py3:
+            return self.__unicode__()
+        else:
+            return self.__unicode__().encode("utf8")
 
 
 class Item(Orm):
