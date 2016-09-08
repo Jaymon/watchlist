@@ -102,7 +102,7 @@ class Item(Orm):
     table_name = "watchlist_item"
     connection_name = "watchlist"
 
-    uuid = Field(str, True, max_size=32, unique=True)
+    uuid = Field(str, True, max_size=32)
     price = Field(int, True)
     body = DumpField(True)
 

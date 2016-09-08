@@ -82,6 +82,26 @@ class EmailTest(TestCase):
 
 
 class ItemTest(TestCase):
+    def test_multi(self):
+        uuid = testdata.get_ascii(16)
+
+        it = Item(
+            uuid=uuid,
+            body={"foo": 1},
+            price=17.14
+        )
+        it.save()
+
+        it2 = Item(
+            uuid=uuid,
+            body={"foo": 1},
+            price=17.15
+        )
+        it2.save()
+
+        self.assertEqual(it.uuid, it2.uuid)
+        self.assertLess(it.pk, it2.pk)
+
     def test_crud(self):
         it = Item(
             uuid=testdata.get_ascii(16),
