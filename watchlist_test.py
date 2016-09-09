@@ -15,6 +15,49 @@ def tearDownModule():
 
 
 class EmailTest(TestCase):
+    def test_order(self):
+        em = Email("foo")
+
+        body = {
+            "url": "http://foo.com",
+            "image": "http://foo.com/bar.jpg",
+        }
+
+        body.update({
+            "title": "expensive",
+            "price": 100.00,
+        })
+        it = Item(body=dict(body))
+        em.append(it, it)
+
+        body.update({
+            "title": "cheaper",
+            "price": 10.00,
+        })
+        it = Item(body=dict(body))
+        em.append(it, it)
+
+        body.update({
+            "title": "cheapest",
+            "price": 1.00,
+        })
+        it = Item(body=dict(body))
+        em.append(it, it)
+
+        html = em.body_html
+        self.assertTrue(html.index("cheapest") < html.index("cheaper") < html.index("expensive"))
+
+    def test_subject(self):
+        em = Email("foo")
+        it = Item(body={"price": 1})
+        em.append(Item(body={"price": 1}), Item(body={"price": 2}))
+        em.append(Item(body={"price": 2}), Item(body={"price": 1}))
+
+        self.assertFalse("total" in em.subject)
+
+        em.kwargs["item_count"] = 2
+        self.assertTrue("total" in em.subject)
+
     def test_email_unicode(self):
         em = Email("foo")
         body = {
@@ -77,11 +120,30 @@ class EmailTest(TestCase):
         em = Email("wishlist-name")
         em.append(old_item, new_item)
 
-        pout.v(em)
+        #pout.v(em)
         #em.send()
 
 
 class ItemTest(TestCase):
+    def test_fset(self):
+        uuid = testdata.get_ascii(16)
+        body = {
+            "uuid": uuid,
+            "price": 100.0,
+        }
+        it = Item(body=body)
+        self.assertEqual(10000, it.price)
+        self.assertEqual(uuid, it.uuid)
+
+        body = {
+            "uuid": testdata.get_ascii(16),
+            "price": 200.0,
+        }
+        it.body = body
+        self.assertEqual(10000, it.price)
+        self.assertEqual(uuid, it.uuid)
+        self.assertNotEqual(uuid, it.body["uuid"])
+
     def test_multi(self):
         uuid = testdata.get_ascii(16)
 

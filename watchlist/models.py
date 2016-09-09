@@ -12,21 +12,31 @@ from .compat import *
 class Email(BaseEmail):
     @property
     def subject(self):
-        return "{} down, {} up [wishlist {}]".format(
-            len(self.cheaper_items),
-            len(self.richer_items),
-            self.name
-        )
+        fmt_str = "{cheaper_count} down, {richer_count} up [wishlist {name}]"
+        fmt_args = {
+            "cheaper_count": len(self.cheaper_items),
+            "richer_count": len(self.richer_items),
+            "name": self.name
+        }
+
+        item_count = self.kwargs.get("item_count", 0)
+        if item_count:
+            fmt_str = "{cheaper_count} down, {richer_count} up, {item_count} total [wishlist {name}]"
+            fmt_args["item_count"] = item_count
+
+        return fmt_str.format(**fmt_args)
 
     @property
     def body_html(self):
         lines = []
         lines.append("<h2>Lower Priced</h2>")
+        self.cheaper_items.sort(key=lambda ei: ei.new_item.price)
         for ei in self.cheaper_items:
             lines.append("{}".format(ei))
             lines.append("<hr>")
 
         lines.append("<h2>Higher Priced</h2>")
+        self.richer_items.sort(key=lambda ei: ei.new_item.price)
         for ei in self.richer_items:
             lines.append("{}".format(ei))
             lines.append("<hr>")
@@ -35,6 +45,7 @@ class Email(BaseEmail):
 
     def __init__(self, name):
         self.name = name
+        self.kwargs = {}
         self.cheaper_items = []
         self.richer_items = []
 
@@ -51,8 +62,9 @@ class Email(BaseEmail):
     def __bool__(self):
         return len(self) > 0
 
-    def send(self):
+    def send(self, **kwargs):
         if not self: return None
+        self.kwargs.update(kwargs)
         return super(Email, self).send()
 
 
@@ -78,9 +90,11 @@ class EmailItem(object):
                 url,
                 new_item.body["title"]
             ),
-            "    <p>is now {}, previously was {}</p>".format(
+            "    <p>is now ${} ({}), previously was ${} ({})</p>".format(
                 new_item.body["price"],
-                old_item.body["price"]
+                new_item.price,
+                old_item.body["price"],
+                old_item.price
             ),
             "    <p>{}</p>".format(new_item.body.get("comment", "")),
             "  </td>",
@@ -105,6 +119,15 @@ class Item(Orm):
     uuid = Field(str, True, max_size=32)
     price = Field(int, True)
     body = DumpField(True)
+
+    @body.fsetter
+    def body(self, val):
+        if val is None: return None
+        if self.uuid is None:
+            self.uuid = val.get("uuid", None)
+        if self.price is None:
+            self.price = val.get("price", None)
+        return val
 
     @price.fsetter
     def price(self, val):

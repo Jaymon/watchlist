@@ -32,91 +32,88 @@ def main(name, current_page):
 
     email = Email(name)
     errors = []
+    item_count = 0
     crash_count = 0
     max_crash_count = 10
-    while crash_count < max_crash_count:
-        try:
-            with Wishlist.open() as w:
+    try:
+        while crash_count < max_crash_count:
+            try:
+                with Wishlist.open() as w:
 
-                for i, wi in enumerate(w.get(name, current_page), 1):
-                    try:
-                        new_item = Item(
-                            uuid=wi.uuid,
-                            body=wi.jsonable(),
-                            price=wi.price
-                        )
+                    for item_count, wi in enumerate(w.get(name, current_page), item_count):
+                        try:
+                            new_item = Item(
+                                uuid=wi.uuid,
+                                body=wi.jsonable(),
+                                price=wi.price
+                            )
 
-                        if not new_item.price:
-                            new_item.price = wi.marketplace_price
+                            if not new_item.price:
+                                new_item.price = wi.marketplace_price
 
-                        echo.out("{}. {}", i, wi.title)
+                            echo.out("{}. {}", item_count, wi.title)
 
-                        old_item = Item.query.is_uuid(wi.uuid).last()
-                        if old_item:
-                            if new_item.price != old_item.price:
-                                email.append(old_item, new_item)
+                            old_item = Item.query.is_uuid(wi.uuid).last()
+                            if old_item:
+                                if new_item.price != old_item.price:
+                                    email.append(old_item, new_item)
+                                    new_item.save()
+                                    echo.indent("price has changed from {} to {}".format(
+                                        new_item.price,
+                                        old_item.price
+                                    ))
+
+                            else:
+                                # we haven't seen this item previously
                                 new_item.save()
-                                echo.indent("price has changed from {} to {}".format(
-                                    new_item.price,
-                                    old_item.price
-                                ))
+                                echo.indent("this is a new item")
 
-                        else:
-                            # we haven't seen this item previously
-                            new_item.save()
-                            echo.indent("this is a new item")
+                        except KeyboardInterrupt:
+                            raise
 
-                    except KeyboardInterrupt:
-                        raise
+                        except Exception as e:
+                            exc_type, exc_value, exc_traceback = sys.exc_info()
+                            errors.append((e, (exc_type, exc_value, exc_traceback)))
 
-                    except Exception as e:
-                        exc_type, exc_value, exc_traceback = sys.exc_info()
-                        errors.append((e, (exc_type, exc_value, exc_traceback)))
+                            echo.err("{}. Failed!", item_count)
+                            echo.exception(e)
 
-                        echo.err("{}. Failed!", i)
-                        echo.exception(e)
+                        finally:
+                            current_page = w.current_page
 
-                    finally:
-                        current_page = w.current_page
+                    echo.out("Done with wishlist, {} total pages", current_page)
+                    break
 
-#                     if (i % 25) == 0:
-#                         sleep_count = random.randint(1, 5)
-#                         echo.h3("Sleeping for {} seconds".format(sleep_count))
-#                         time.sleep(sleep_count)
+            except RecoverableCrash:
+                crash_count += 1
+                if crash_count > max_crash_count:
+                    raise
 
-        except KeyboardInterrupt:
-            break
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                errors.append((e, (exc_type, exc_value, exc_traceback)))
+                echo.exception(e)
 
-        except RecoverableCrash:
-            crash_count += 1
-            if crash_count > max_crash_count:
-                raise
+        if errors:
+            em = ErrorEmail()
+            em.subject = "{} errors raised".format(len(errors))
+            body = []
 
-        except Exception as e:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            errors.append((e, (exc_type, exc_value, exc_traceback)))
-            echo.exception(e)
+            for e, sys_exc_info in errors:
+                exc_type, exc_value, exc_traceback = sys_exc_info
+                stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                body.append(e.message)
+                body.append("".join(stacktrace))
+                body.append("")
 
-        else:
-            echo.out("Done with wishlist, {} total pages", current_page)
-            break
+            em.body_text = "\n".join(body)
+            em.send()
 
-    if errors:
-        em = ErrorEmail()
-        em.subject = "{} errors raised".format(len(errors))
-        body = []
+        email.send(item_count=item_count)
 
-        for e, sys_exc_info in errors:
-            exc_type, exc_value, exc_traceback = sys_exc_info
-            stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            body.append(e.message)
-            body.append("".join(stacktrace))
-            body.append("")
+    except KeyboardInterrupt:
+        pass
 
-        em.body_text = "\n".join(body)
-        em.send()
-
-    email.send()
 
 if __name__ == "__main__":
     console()
