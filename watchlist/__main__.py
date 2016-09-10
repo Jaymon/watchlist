@@ -48,8 +48,8 @@ def main(name, current_page):
                                 price=wi.price
                             )
 
-                            if not new_item.price:
-                                new_item.price = wi.marketplace_price
+                            #if not new_item.price:
+                            #    new_item.price = wi.marketplace_price
 
                             echo.out("{}. {}", item_count, wi.title)
 
