@@ -32,67 +32,54 @@ def main(name, current_page):
 
     email = Email(name)
     errors = []
-    item_count = 0
-    crash_count = 0
-    max_crash_count = 10
+    item_count = 1
     try:
-        while crash_count < max_crash_count:
-            try:
-                with Wishlist.open() as w:
+        try:
+            w = Wishlist()
+            for item_count, wi in enumerate(w.get(name, current_page), item_count):
+                try:
+                    new_item = Item(
+                        uuid=wi.uuid,
+                        body=wi.jsonable(),
+                        price=wi.price
+                    )
 
-                    for item_count, wi in enumerate(w.get(name, current_page), item_count):
-                        try:
-                            new_item = Item(
-                                uuid=wi.uuid,
-                                body=wi.jsonable(),
-                                price=wi.price
-                            )
+                    #if not new_item.price:
+                    #    new_item.price = wi.marketplace_price
 
-                            #if not new_item.price:
-                            #    new_item.price = wi.marketplace_price
+                    echo.out("{}. {}", item_count, wi.title)
 
-                            echo.out("{}. {}", item_count, wi.title)
+                    old_item = Item.query.is_uuid(wi.uuid).last()
+                    if old_item:
+                        if new_item.price != old_item.price:
+                            email.append(old_item, new_item)
+                            new_item.save()
+                            echo.indent("price has changed from {} to {}".format(
+                                new_item.price,
+                                old_item.price
+                            ))
 
-                            old_item = Item.query.is_uuid(wi.uuid).last()
-                            if old_item:
-                                if new_item.price != old_item.price:
-                                    email.append(old_item, new_item)
-                                    new_item.save()
-                                    echo.indent("price has changed from {} to {}".format(
-                                        new_item.price,
-                                        old_item.price
-                                    ))
+                    else:
+                        # we haven't seen this item previously
+                        new_item.save()
+                        echo.indent("this is a new item")
 
-                            else:
-                                # we haven't seen this item previously
-                                new_item.save()
-                                echo.indent("this is a new item")
+                except Exception as e:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    errors.append((e, (exc_type, exc_value, exc_traceback)))
 
-                        except KeyboardInterrupt:
-                            raise
+                    echo.err("{}. Failed!", item_count)
+                    echo.exception(e)
 
-                        except Exception as e:
-                            exc_type, exc_value, exc_traceback = sys.exc_info()
-                            errors.append((e, (exc_type, exc_value, exc_traceback)))
+                finally:
+                    current_page = w.current_page
 
-                            echo.err("{}. Failed!", item_count)
-                            echo.exception(e)
+            echo.out("Done with wishlist, {} total pages", current_page)
 
-                        finally:
-                            current_page = w.current_page
-
-                    echo.out("Done with wishlist, {} total pages", current_page)
-                    break
-
-            except RecoverableCrash:
-                crash_count += 1
-                if crash_count > max_crash_count:
-                    raise
-
-            except Exception as e:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                errors.append((e, (exc_type, exc_value, exc_traceback)))
-                echo.exception(e)
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            errors.append((e, (exc_type, exc_value, exc_traceback)))
+            echo.exception(e)
 
         if errors:
             em = ErrorEmail()
