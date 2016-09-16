@@ -52,7 +52,8 @@ def main(name, current_page):
                     old_item = Item.query.is_uuid(wi.uuid).last()
                     if old_item:
                         if new_item.price != old_item.price:
-                            email.append(old_item, new_item)
+                            cheapest_item = Item.cheapest(new_item.uuid)
+                            email.append(old_item, new_item, cheapest_item)
                             new_item.save()
                             echo.indent("price has changed from {} to {}".format(
                                 new_item.price,

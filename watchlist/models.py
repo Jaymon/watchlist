@@ -49,11 +49,11 @@ class Email(BaseEmail):
         self.cheaper_items = []
         self.richer_items = []
 
-    def append(self, old_item, new_item):
+    def append(self, old_item, new_item, cheapest_item=None):
         if old_item.price < new_item.price:
-            self.richer_items.append(EmailItem(old_item, new_item))
+            self.richer_items.append(EmailItem(old_item, new_item, cheapest_item))
         else:
-            self.cheaper_items.append(EmailItem(old_item, new_item))
+            self.cheaper_items.append(EmailItem(old_item, new_item, cheapest_item))
 
     def __len__(self):
         return len(self.cheaper_items) + len(self.richer_items)
@@ -69,9 +69,10 @@ class Email(BaseEmail):
 
 
 class EmailItem(object):
-    def __init__(self, old_item, new_item):
+    def __init__(self, old_item, new_item, cheapest_item):
         self.old_item = old_item
         self.new_item = new_item
+        self.cheapest_item = cheapest_item
 
     def __unicode__(self):
         old_item = self.old_item
@@ -90,17 +91,25 @@ class EmailItem(object):
                 url,
                 new_item.body["title"]
             ),
-            "    <p>is now ${} ({}), previously was ${} ({})</p>".format(
+            "    <p>is now ${:.2f}, previously was ${:.2f}</p>".format(
                 new_item.body["price"],
-                new_item.price,
                 old_item.body["price"],
-                old_item.price
             ),
+        ]
+
+        if self.cheapest_item:
+            citem = self.cheapest_item
+            lines.append("    <p><b>Previous lowest was ${:.2f} on {}</b></p>".format(
+                citem.body.get("price", 0.0),
+                citem._created.strftime("%Y-%m-%d")
+            ))
+
+        lines.extend([
             "    <p>{}</p>".format(new_item.body.get("comment", "")),
             "  </td>",
             "</tr>",
             "</table>",
-        ]
+        ])
 
         return "\n".join(lines)
 
@@ -119,6 +128,10 @@ class Item(Orm):
     uuid = Field(str, True, max_size=32)
     price = Field(int, True)
     body = DumpField(True)
+
+    @classmethod
+    def cheapest(cls, uuid):
+        return cls.query.is_uuid(uuid).gt_price(0).asc_price().get_one()
 
     @body.fsetter
     def body(self, val):

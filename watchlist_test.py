@@ -125,6 +125,16 @@ class EmailTest(TestCase):
 
 
 class ItemTest(TestCase):
+    def test_cheapest(self):
+        it = Item.create(price=10, body={}, uuid="foo")
+        it = Item.create(price=1, body={}, uuid="foo")
+        it = Item.create(price=1000, body={}, uuid="foo")
+        it = Item.create(price=100, body={}, uuid="foo")
+        it = Item.create(price=0, body={}, uuid="foo")
+
+        cheapest = Item.cheapest("foo")
+        self.assertEqual(1, cheapest.price)
+
     def test_fset(self):
         uuid = testdata.get_ascii(16)
         body = {
