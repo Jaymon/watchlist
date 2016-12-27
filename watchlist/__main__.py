@@ -48,9 +48,6 @@ def main(name, start_page, stop_page, dry_run):
                         price=wi.price
                     )
 
-                    #if not new_item.price:
-                    #    new_item.price = wi.marketplace_price
-
                     echo.out("{}. {}", item_count, wi.title)
 
                     old_item = Item.query.is_uuid(wi.uuid).last()
@@ -66,10 +63,9 @@ def main(name, start_page, stop_page, dry_run):
                             ))
 
                     else:
-                        # we haven't seen this item previously
+                        echo.indent("This is a new item")
                         if not dry_run:
                             new_item.save()
-                        echo.indent("this is a new item")
 
                 except RobotError:
                     raise
@@ -84,7 +80,12 @@ def main(name, start_page, stop_page, dry_run):
                 finally:
                     current_page = w.current_page
 
-            echo.out("Done with wishlist, {} total pages, {} items", current_page, item_count)
+            echo.out(
+                "Done with wishlist, {} total pages, {} items, {} changes",
+                current_page,
+                item_count,
+                len(email),
+            )
 
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()

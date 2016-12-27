@@ -91,7 +91,7 @@ class EmailItem(object):
                 url,
                 new_item.body["title"]
             ),
-            "    <p>is now ${:.2f}, previously was ${:.2f}</p>".format(
+            "    <p><b>${:.2f}</b>, previously was <b>${:.2f}</b></p>".format(
                 new_item.body["price"],
                 old_item.body["price"],
             ),
@@ -99,7 +99,7 @@ class EmailItem(object):
 
         if self.cheapest_item:
             citem = self.cheapest_item
-            lines.append("    <p><b>Previous lowest was ${:.2f} on {}</b></p>".format(
+            lines.append("    <p>Lowest price was <b>${:.2f}</b> on {}</p>".format(
                 citem.body.get("price", 0.0),
                 citem._created.strftime("%Y-%m-%d")
             ))
