@@ -12,15 +12,6 @@ class Email(object):
 
     body_html = ""
 
-    #body_text = ""
-#     @property
-#     def body_html(self):
-#         return getattr(self, "_body_html", "")
-# 
-#     @body_html.setter
-#     def body_html(self, body):
-#         self._body_html = body_html
-
     @property
     def body_text(self):
         body = getattr(self, "_body_text", None)

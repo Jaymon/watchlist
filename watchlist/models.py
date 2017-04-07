@@ -1,4 +1,5 @@
-from __future__ import unicode_literals
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 
 from prom import Orm, Field, DumpField, Index
@@ -29,17 +30,26 @@ class Email(BaseEmail):
     @property
     def body_html(self):
         lines = []
-        lines.append("<h2>Lower Priced</h2>")
-        self.cheaper_items.sort(key=lambda ei: ei.new_item.price)
-        for ei in self.cheaper_items:
-            lines.append("{}".format(ei))
-            lines.append("<hr>")
+        if self.cheaper_items:
+            lines.append("<h2>Lower Priced</h2>")
+            self.cheaper_items.sort(key=lambda ei: ei.new_item.price)
+            for ei in self.cheaper_items:
+                lines.append("{}".format(ei))
+                lines.append("<hr>")
 
-        lines.append("<h2>Higher Priced</h2>")
-        self.richer_items.sort(key=lambda ei: ei.new_item.price)
-        for ei in self.richer_items:
-            lines.append("{}".format(ei))
-            lines.append("<hr>")
+        if self.richer_items:
+            lines.append("<h2>Higher Priced</h2>")
+            self.richer_items.sort(key=lambda ei: ei.new_item.price)
+            for ei in self.richer_items:
+                lines.append("{}".format(ei))
+                lines.append("<hr>")
+
+        if self.nostock_items:
+            lines.append("<h2>Out of Stock</h2>")
+            self.nostock_items.sort(key=lambda ei: ei.old_item.price)
+            for ei in self.nostock_items:
+                lines.append("{}".format(ei))
+                lines.append("<hr>")
 
         return "\n".join(lines)
 
@@ -48,12 +58,16 @@ class Email(BaseEmail):
         self.kwargs = {}
         self.cheaper_items = []
         self.richer_items = []
+        self.nostock_items = []
 
     def append(self, old_item, new_item, cheapest_item=None):
-        if old_item.price < new_item.price:
-            self.richer_items.append(EmailItem(old_item, new_item, cheapest_item))
+        ei = EmailItem(old_item, new_item, cheapest_item)
+        if ei.is_richer():
+            self.richer_items.append(ei)
+        elif ei.is_stocked():
+            self.cheaper_items.append(ei)
         else:
-            self.cheaper_items.append(EmailItem(old_item, new_item, cheapest_item))
+            self.nostock_items.append(ei)
 
     def __len__(self):
         return len(self.cheaper_items) + len(self.richer_items)
@@ -69,7 +83,7 @@ class Email(BaseEmail):
 
 
 class EmailItem(object):
-    def __init__(self, old_item, new_item, cheapest_item):
+    def __init__(self, old_item, new_item, cheapest_item=None):
         self.old_item = old_item
         self.new_item = new_item
         self.cheapest_item = cheapest_item
@@ -79,23 +93,45 @@ class EmailItem(object):
         new_item = self.new_item
 
         url = new_item.body["url"]
+
         lines = [
             "<table>",
             "<tr>",
-            "  <td><a href=\"{}\"><img src=\"{}\"></a></td>".format(
-                url,
-                new_item.body["image"]
-            ),
+        ]
+
+        image_url = new_item.body.get("image", "")
+        if image_url:
+            lines.extend([
+                "  <td>",
+                "    <a href=\"{}\"><img src=\"{}\"></a>".format(
+                    url,
+                    image_url
+                ),
+                "  </td>",
+            ])
+
+        lines.append(
             "  <td>"
+        )
+
+        lines.append(
             "    <h3><a href=\"{}\">{}</a></h3>".format(
                 url,
                 new_item.body["title"]
-            ),
+            )
+        )
+
+        lines.append(
             "    <p><b>${:.2f}</b>, previously was <b>${:.2f}</b></p>".format(
                 new_item.body["price"],
                 old_item.body["price"],
-            ),
-        ]
+            )
+        )
+
+        if new_item.is_digital():
+            lines.append(
+                "    <p>This is a digital item</p>"
+            )
 
         if self.cheapest_item:
             citem = self.cheapest_item
@@ -117,7 +153,15 @@ class EmailItem(object):
         if is_py3:
             return self.__unicode__()
         else:
-            return self.__unicode__().encode("utf8")
+            return self.__unicode__().encode("UTF-8")
+
+    def is_richer(self):
+        """Return true if the new item is more expensive than the old item"""
+        return self.old_item.price < self.new_item.price
+
+    def is_stocked(self):
+        """Return True if the item is in stock"""
+        return self.new_item.is_stocked()
 
 
 class Item(Orm):
@@ -148,4 +192,12 @@ class Item(Orm):
         if val is None: return None
         if isinstance(val, (int, long)): return val
         return int(val * 100.0)
+
+    def is_digital(self):
+        """Returns True if this is a digital item like a Kindle book or mp3"""
+        return self.body.get("digital", False)
+
+    def is_stocked(self):
+        """Return True if the item is in stock"""
+        return self.price or self.is_digital()
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals
+from __future__ import unicode_literals, division, print_function, absolute_import
 from unittest import TestCase
 
 import testdata
@@ -12,6 +12,35 @@ def setUpModule():
 
 def tearDownModule():
     Item.interface.delete_tables(disable_protection=True)
+
+
+def get_item(item=None, **kwargs):
+    if item:
+        body = dict(item.body)
+        body.update(kwargs)
+        body.setdefault("uuid", item.uuid)
+        kwargs = body
+
+    price = kwargs.pop("price", testdata.get_int(1000))
+    uuid = kwargs.pop("uuid", testdata.get_hash())
+
+    kwargs.setdefault("url", testdata.get_url())
+    kwargs.setdefault("digital", testdata.get_bool())
+    kwargs.setdefault("image", testdata.get_url())
+    kwargs.setdefault("title", testdata.get_words())
+
+    if isinstance(price, float):
+        kwargs["price"] = price
+        price = int(price * 100.0)
+    else:
+        kwargs["price"] = float(price) * 0.01
+
+    it = Item(
+        price=price,
+        body=kwargs,
+        uuid=uuid
+    )
+    return it
 
 
 class EmailTest(TestCase):
@@ -122,6 +151,40 @@ class EmailTest(TestCase):
 
         #pout.v(em)
         #em.send()
+
+    def test_nostock(self):
+        nit = get_item(price=0, digital=False)
+        oit = get_item(nit, price=100)
+        em = Email("wishlist-name")
+        em.append(oit, nit)
+        self.assertTrue("Out of Stock" in em.body_html)
+
+        nit = get_item(price=0, digital=True)
+        oit = get_item(nit, price=100)
+        em = Email("wishlist-name")
+        em.append(oit, nit)
+        self.assertTrue("Lower Priced" in em.body_html)
+
+class EmailItemTest(TestCase):
+    def test_digital(self):
+        nit = Item.create(
+            price=100,
+            body={
+                "url": testdata.get_url(),
+                "title": testdata.get_words(),
+                "digital": True,
+                "price": 1.0
+            },
+            uuid="foo"
+        )
+        oit = Item.create(
+            price=200,
+            body=nit.body,
+            uuid=nit.uuid
+        )
+
+        ei = EmailItem(oit, nit)
+        self.assertTrue("digital" in "{}".format(ei))
 
 
 class ItemTest(TestCase):
