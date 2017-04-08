@@ -5,6 +5,7 @@ import time
 import random
 import logging
 import sys
+import datetime
 
 
 # configure logging, for debugging
@@ -85,7 +86,8 @@ def main(name, start_page, stop_page, dry_run):
                     current_page = w.current_page
 
             echo.out(
-                "Done with wishlist, {} total pages, {} items, {} changes",
+                "{}. Done with wishlist, {} total pages, {} items, {} changes",
+                datetime.datetime.utcnow(),
                 current_page,
                 item_count,
                 len(email),
