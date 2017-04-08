@@ -9,12 +9,16 @@ import sys
 
 # configure logging, for debugging
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 log_handler = logging.StreamHandler(stream=sys.stderr)
-#log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
-log_formatter = logging.Formatter('[%(levelname)s] %(message)s [%(pathname)s:%(lineno)d]')
+log_formatter = logging.Formatter('[%(levelname).1s|%(asctime)s|%(filename)s:%(lineno)s] %(message)s')
 log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
+# turn off certain logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+#pl = logging.getLogger('prom')
+#pl.setLevel(logging.CRITICAL)
 
 
 from captain import echo, exit as console, ArgError
