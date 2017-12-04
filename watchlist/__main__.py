@@ -1,4 +1,5 @@
-from __future__ import unicode_literals
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import sys
 import traceback
 import time
@@ -32,20 +33,17 @@ from watchlist.email import Email as ErrorEmail
 
 
 @arg('name', nargs=1, help="the name of the wishlist, amazon.com/gp/registry/wishlist/NAME")
-@arg('--start-page', dest="start_page", type=int, default=1, help="The Wishlist page you want to start on")
-@arg('--stop-page', dest="stop_page", type=int, default=0, help="The Wishlist page you want to stop on")
 @arg('--dry-run', dest="dry_run", action="store_true", help="Perform a dry run")
-def main(name, start_page, stop_page, dry_run):
+def main(name, dry_run):
     """go through and check wishlist against previous entries"""
     name = name[0]
     email = Email(name)
     errors = []
     item_count = 1
-    current_page = 0
     try:
         try:
-            w = Wishlist()
-            for item_count, wi in enumerate(w.get(name, start_page, stop_page), item_count):
+            w = Wishlist(name)
+            for item_count, wi in enumerate(w, item_count):
                 try:
                     new_item = Item(
                         uuid=wi.uuid,
@@ -82,13 +80,9 @@ def main(name, start_page, stop_page, dry_run):
                     echo.err("{}. Failed!", item_count)
                     echo.exception(e)
 
-                finally:
-                    current_page = w.current_page
-
             echo.out(
-                "{}. Done with wishlist, {} total pages, {} items, {} changes",
+                "{}. Done with wishlist, {} total items, {} changes",
                 datetime.datetime.utcnow(),
-                current_page,
                 item_count,
                 len(email),
             )
@@ -100,8 +94,10 @@ def main(name, start_page, stop_page, dry_run):
 
         if not dry_run:
             if errors:
+                subject = "{} errors raised".format(len(errors))
+                echo.err(subject)
                 em = ErrorEmail()
-                em.subject = "{} errors raised".format(len(errors))
+                em.subject = subject
                 body = []
 
                 for e, sys_exc_info in errors:
