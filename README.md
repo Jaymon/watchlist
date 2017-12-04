@@ -17,12 +17,12 @@ You'll need to setup a [Sendgrid](https://sendgrid.com/) account (if you don't h
 And you'll need some environment variables:
 
     export SENDGRID_KEY=YOUR_SENDGRID_API_KEY
-    export BROWSER_CACHE_DIR=/var/watchlist
+    export BROW_CACHE_DIR=/var/watchlist
     export PROM_DSN_1="prom.interface.sqlite.SQLite://${BROWSER_CACHE_DIR}/watchlist.db#watchlist"
 
-Make sure your `BROWSER_CACHE_DIR` actually exists. 
+Make sure your `BROW_CACHE_DIR` actually exists. 
 
-Install [wishlist's dependencies also](https://github.com/Jaymon/wishlist#dependencies).
+[wishlist has dependencies also](https://github.com/Jaymon/wishlist).
 
 If you have a private wishlist, then you'll need to login to Amazon before you can run watchlist, you can follow the [wishlist directions](https://github.com/Jaymon/wishlist#1-minute-gettings-started) to signin.
 
