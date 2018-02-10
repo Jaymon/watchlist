@@ -25,7 +25,8 @@ logger.setLevel(logging.DEBUG)
 
 from captain import echo, exit as console, ArgError
 from captain.decorators import arg, args
-from wishlist.core import Wishlist, RobotError
+from wishlist import Wishlist
+from wishlist.exception import RobotError
 
 from watchlist import __version__
 from watchlist.models import Email, Item
@@ -42,6 +43,11 @@ def main(name, dry_run):
     item_count = 1
     try:
         try:
+
+            # Let's flush out a problem connecting to the DB before getting into
+            # the loop
+            Item.interface.connect()
+
             w = Wishlist(name)
             for item_count, wi in enumerate(w, item_count):
                 try:
@@ -103,7 +109,7 @@ def main(name, dry_run):
                 for e, sys_exc_info in errors:
                     exc_type, exc_value, exc_traceback = sys_exc_info
                     stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                    body.append(e.message)
+                    body.append(str(e))
                     body.append("".join(stacktrace))
                     body.append("")
 

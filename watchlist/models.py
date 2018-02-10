@@ -2,7 +2,7 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 
-from prom import Orm, Field, DumpField, Index
+from prom import Orm, Field, ObjectField, Index
 import sendgrid
 from bs4 import BeautifulSoup
 
@@ -171,7 +171,7 @@ class Item(Orm):
 
     uuid = Field(str, True, max_size=32)
     price = Field(int, True)
-    body = DumpField(True)
+    body = ObjectField(True)
 
     @classmethod
     def cheapest(cls, uuid):

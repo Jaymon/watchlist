@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 from unittest import TestCase
+import os
 
 import testdata
+from captain.client import Captain
 
 from watchlist.models import Item, Email, EmailItem
+
 
 def setUpModule():
     Item.interface.delete_tables(disable_protection=True)
@@ -265,4 +268,21 @@ class ItemTest(TestCase):
 
         it.price = 1256
         self.assertEqual(1256, it.price)
+
+
+class MainTest(TestCase):
+    def test_connect_failure(self):
+        """I recently had an issue where the environment variables got screwed up
+        so Watchlist failed to connect to the db and I got a huge email with the
+        same error over and over, this makes sure that Watchlist will fail once
+        if it can't connect to the db
+        """
+        c = Captain("watchlist")
+        c.cmd_prefix = "python -m"
+
+        environ = dict(os.environ)
+        environ["PROM_DSN"] = "prom.interface.sqlite.SQLite:///watchlist.db#watchlist"
+        c.env = environ
+        r = c.run("foobar --dry-run")
+        self.assertTrue("unable to open database file" in r)
 
