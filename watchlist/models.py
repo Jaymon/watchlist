@@ -172,13 +172,15 @@ class EmailItem(object):
                 citem.price_count,
             ))
 
-        added = new_item.body.get("added", None)
+        lines.append("    <p>")
         page_url = new_item.body.get("page_url", "")
-        if page_url and added:
-            lines.append("    <p><a href=\"{}\">page</a>, added {}</p>".format(
-                added,
-                page_url
-            ))
+        if page_url:
+            lines.append("        <a href=\"{}\">page</a>".format(page_url))
+
+        added = new_item.body.get("added", None)
+        if added:
+            lines.append("        , added {}".format(added))
+        lines.append("    </p>")
 
         lines.extend([
             "    <p>{}</p>".format(new_item.body.get("comment", "")),
