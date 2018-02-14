@@ -174,12 +174,13 @@ class EmailItem(object):
 
         lines.append("    <p>")
         page_url = new_item.body.get("page_url", "")
+        added = new_item.body.get("added", "unknown")
         if page_url:
-            lines.append("        <a href=\"{}\">page</a>".format(page_url))
+            lines.append("        <a href=\"{}\">added {}</a>".format(page_url, added))
 
-        added = new_item.body.get("added", None)
-        if added:
-            lines.append("        , added {}".format(added))
+        else:
+            lines.append("        added {}".format(added))
+
         lines.append("    </p>")
 
         lines.extend([
