@@ -125,7 +125,7 @@ class EmailTest(TestCase):
         #print ei_str
 
     def test_body(self):
-        uuid = testdata.get_ascii(16),
+        uuid = testdata.get_ascii(16)
         body = {
             "url": "http://example.com",
             "title": "this is the title",
@@ -191,15 +191,35 @@ class EmailItemTest(TestCase):
 
 
 class ItemTest(TestCase):
-    def test_cheapest(self):
+    def test_last(self):
         it = Item.create(price=10, body={}, uuid="foo")
         it = Item.create(price=1, body={}, uuid="foo")
         it = Item.create(price=1000, body={}, uuid="foo")
         it = Item.create(price=100, body={}, uuid="foo")
+
+        it = Item(price=0, body={}, uuid="foo")
+        last = it.last
+        self.assertEqual(100, last.price)
+
+    def test_cheapest(self):
+        it = Item.create(price=10, body={}, uuid="foo")
+        it = Item.create(price=1, body={}, uuid="foo")
+        it_richest = Item.create(price=1000, body={}, uuid="foo")
+        it = Item.create(price=100, body={}, uuid="foo")
         it = Item.create(price=0, body={}, uuid="foo")
 
-        cheapest = Item.cheapest("foo")
+        cheapest = it_richest.cheapest
         self.assertEqual(1, cheapest.price)
+
+    def test_richest(self):
+        it = Item.create(price=10, body={}, uuid="foo")
+        it = Item.create(price=1, body={}, uuid="foo")
+        it_richest = Item.create(price=1000, body={}, uuid="foo")
+        it = Item.create(price=100, body={}, uuid="foo")
+        it = Item.create(price=0, body={}, uuid="foo")
+
+        richest = it.richest
+        self.assertEqual(1000, richest.price)
 
     def test_fset(self):
         uuid = testdata.get_ascii(16)

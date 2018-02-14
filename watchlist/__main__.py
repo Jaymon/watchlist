@@ -59,11 +59,10 @@ def main(name, dry_run):
 
                     echo.out("{}. {}", item_count, wi.title)
 
-                    old_item = Item.query.is_uuid(wi.uuid).last()
+                    old_item = new_item.last #Item.query.is_uuid(wi.uuid).last()
                     if old_item:
                         if new_item.price != old_item.price:
-                            cheapest_item = Item.cheapest(new_item.uuid)
-                            email.append(old_item, new_item, cheapest_item)
+                            email.append(old_item, new_item)
                             if not dry_run:
                                 new_item.save()
                             echo.indent("price has changed from {} to {}".format(

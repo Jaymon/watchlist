@@ -13,19 +13,26 @@ from .compat import *
 class Email(BaseEmail):
     @property
     def subject(self):
-        fmt_str = "{cheaper_count} down, {richer_count} up [wishlist {name}]"
         fmt_args = {
             "cheaper_count": len(self.cheaper_items),
+            "cheapest_count": len(self.cheapest_items),
             "richer_count": len(self.richer_items),
             "name": self.name
         }
 
+        fmt_str = [
+            "{cheaper_count} down,",
+            "{cheapest_count} cheapest,",
+            "{richer_count} up,", 
+        ]
+
         item_count = self.kwargs.get("item_count", 0)
         if item_count:
-            fmt_str = "{cheaper_count} down, {richer_count} up, {item_count} total [wishlist {name}]"
+            fmt_str.append("{item_count} total")
             fmt_args["item_count"] = item_count
 
-        return fmt_str.format(**fmt_args)
+        fmt_str.append("[wishlist {name}]")
+        return " ".join(fmt_str).format(**fmt_args)
 
     @property
     def body_html(self):
@@ -35,21 +42,24 @@ class Email(BaseEmail):
             self.cheaper_items.sort(key=lambda ei: ei.new_item.price)
             for ei in self.cheaper_items:
                 lines.append("{}".format(ei))
-                lines.append("<hr>")
 
         if self.richer_items:
             lines.append("<h2>Higher Priced</h2>")
             self.richer_items.sort(key=lambda ei: ei.new_item.price)
             for ei in self.richer_items:
                 lines.append("{}".format(ei))
-                lines.append("<hr>")
+
+        if self.cheapest_items:
+            lines.append("<h2>Cheapest</h2>")
+            self.cheapest_items.sort(key=lambda ei: ei.new_item.price)
+            for ei in self.cheapest_items:
+                lines.append("{}".format(ei))
 
         if self.nostock_items:
             lines.append("<h2>Out of Stock</h2>")
             self.nostock_items.sort(key=lambda ei: ei.old_item.price)
             for ei in self.nostock_items:
                 lines.append("{}".format(ei))
-                lines.append("<hr>")
 
         return "\n".join(lines)
 
@@ -57,15 +67,18 @@ class Email(BaseEmail):
         self.name = name
         self.kwargs = {}
         self.cheaper_items = []
+        self.cheapest_items = []
         self.richer_items = []
         self.nostock_items = []
 
-    def append(self, old_item, new_item, cheapest_item=None):
-        ei = EmailItem(old_item, new_item, cheapest_item)
+    def append(self, old_item, new_item):
+        ei = EmailItem(old_item, new_item)
         if ei.is_richer():
             self.richer_items.append(ei)
         elif ei.is_stocked():
             self.cheaper_items.append(ei)
+        elif ei.is_cheapest():
+            self.cheapest_items.append(ei)
         else:
             self.nostock_items.append(ei)
 
@@ -83,10 +96,11 @@ class Email(BaseEmail):
 
 
 class EmailItem(object):
-    def __init__(self, old_item, new_item, cheapest_item=None):
+    def __init__(self, old_item, new_item):
         self.old_item = old_item
         self.new_item = new_item
-        self.cheapest_item = cheapest_item
+        self.cheapest_item = new_item.cheapest
+        self.richest_item = new_item.richest
 
     def __unicode__(self):
         old_item = self.old_item
@@ -114,12 +128,29 @@ class EmailItem(object):
             "  <td>"
         )
 
-        lines.append(
-            "    <h3><a href=\"{}\">{}</a></h3>".format(
-                url,
-                new_item.body["title"]
+        if self.is_cheapest():
+            lines.append(
+                "    <h3><a style=\"color:green\" href=\"{}\">{}</a></h3>".format(
+                    url,
+                    new_item.body["title"]
+                )
             )
-        )
+
+        elif self.is_richest():
+            lines.append(
+                "    <h3><a style=\"color:red\" href=\"{}\">{}</a></h3>".format(
+                    url,
+                    new_item.body["title"]
+                )
+            )
+
+        else:
+            lines.append(
+                "    <h3><a href=\"{}\">{}</a></h3>".format(
+                    url,
+                    new_item.body["title"]
+                )
+            )
 
         lines.append(
             "    <p><b>${:.2f}</b>, previously was <b>${:.2f}</b></p>".format(
@@ -135,9 +166,18 @@ class EmailItem(object):
 
         if self.cheapest_item:
             citem = self.cheapest_item
-            lines.append("    <p>Lowest price was <b>${:.2f}</b> on {}</p>".format(
+            lines.append("    <p>Lowest price was <b>${:.2f}</b> on {} ({} times total)</p>".format(
                 citem.body.get("price", 0.0),
-                citem._created.strftime("%Y-%m-%d")
+                citem._created.strftime("%Y-%m-%d"),
+                citem.price_count,
+            ))
+
+        added = new_item.body.get("added", None)
+        page_url = new_item.body.get("page_url", "")
+        if page_url and added:
+            lines.append("    <p><a href=\"{}\">page</a>, added {}</p>".format(
+                added,
+                page_url
             ))
 
         lines.extend([
@@ -146,6 +186,8 @@ class EmailItem(object):
             "</tr>",
             "</table>",
         ])
+
+        lines.append("<hr>")
 
         return "\n".join(lines)
 
@@ -163,6 +205,22 @@ class EmailItem(object):
         """Return True if the item is in stock"""
         return self.new_item.is_stocked()
 
+    def is_cheapest(self):
+        """Return True if the item is the cheapest it's ever been"""
+        ret = False
+        if not self.is_richer():
+            if self.cheapest_item:
+                ret = self.new_item.price == self.cheapest_item.price
+        return ret
+
+    def is_richest(self):
+        """Return True if the item is the richest it's ever been"""
+        ret = False
+        if self.is_richer():
+            if self.richest_item:
+                ret = self.new_item.price == self.richest_item.price
+        return ret
+
 
 class Item(Orm):
 
@@ -172,10 +230,6 @@ class Item(Orm):
     uuid = Field(str, True, max_size=32)
     price = Field(int, True)
     body = ObjectField(True)
-
-    @classmethod
-    def cheapest(cls, uuid):
-        return cls.query.is_uuid(uuid).gt_price(0).asc_price().get_one()
 
     @body.fsetter
     def body(self, val):
@@ -192,6 +246,26 @@ class Item(Orm):
         if val is None: return None
         if isinstance(val, (int, long)): return val
         return int(val * 100.0)
+
+    @property
+    def cheapest(self):
+        """Return the cheapest record of this item in the db"""
+        return self.query.is_uuid(self.uuid).gt_price(0).asc_price().get_one()
+
+    @property
+    def richest(self):
+        """Return the richest record of this item in the db"""
+        return self.query.is_uuid(self.uuid).gt_price(0).desc_price().get_one()
+
+    @property
+    def last(self):
+        """Return the most recent record of this item in the db"""
+        return self.query.is_uuid(self.uuid).last()
+
+    @property
+    def price_count(self):
+        """how many times this price has been seen"""
+        return self.query.is_uuid(self.uuid).is_price(self.price).count()
 
     def is_digital(self):
         """Returns True if this is a digital item like a Kindle book or mp3"""
