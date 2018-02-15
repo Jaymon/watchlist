@@ -255,6 +255,29 @@ class ItemTest(TestCase):
         richest = it.richest
         self.assertEqual(1000, richest.price)
 
+    def test_equality(self):
+        uuid = testdata.get_hash()
+        price = 10
+        it = Item(price=price, body={}, uuid=uuid)
+
+        # make sure when there is non of this item in the db it acts as expected
+        self.assertFalse(it.is_cheaper())
+        self.assertFalse(it.is_richer())
+        self.assertTrue(it.is_newest())
+        self.assertTrue(it.is_cheapest())
+        self.assertTrue(it.is_stocked())
+        self.assertTrue(it.is_richest())
+
+        # now make sure it acts as expected when there is another item
+        wit = WatchlistItem.create(price=price, body={}, uuid=uuid)
+        self.assertFalse(it.is_cheaper())
+        self.assertFalse(it.is_richer())
+        self.assertFalse(it.is_newest())
+        self.assertTrue(it.is_cheapest())
+        self.assertTrue(it.is_stocked())
+        self.assertTrue(it.is_richest())
+
+
 
 class WatchlistItemTest(TestCase):
     def test_fset(self):

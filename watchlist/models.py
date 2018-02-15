@@ -266,7 +266,11 @@ class Item(object):
 
     def is_cheaper(self):
         if not self.is_stocked(): return False
-        return not self.is_richer()
+        ret = False
+        last = self.last
+        if last:
+            ret = self.newest.price < last.price
+        return ret
 
     def is_stocked(self):
         """Return True if the item is in stock"""
@@ -282,14 +286,18 @@ class Item(object):
         if not self.is_richer() and self.is_stocked():
             if self.cheapest:
                 ret = self.newest.price <= self.cheapest.price
+            else:
+                ret = True # no other one exists in db
         return ret
 
     def is_richest(self):
         """Return True if the item is the richest it's ever been"""
         ret = False
-        if self.is_richer() and self.is_stocked():
+        if self.is_stocked():
             if self.richest:
                 ret = self.newest.price >= self.richest.price
+            else:
+                ret = True # no other one exists in db
         return ret
 
     def is_newest(self):
