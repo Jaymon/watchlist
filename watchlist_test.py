@@ -6,20 +6,20 @@ import os
 import testdata
 from captain.client import Captain
 
-from watchlist.models import Item, Email, EmailItem
+from watchlist.models import Item, Email, EmailItem, WatchlistItem
 
 
 def setUpModule():
-    Item.interface.delete_tables(disable_protection=True)
+    WatchlistItem.interface.delete_tables(disable_protection=True)
 
 
 def tearDownModule():
-    Item.interface.delete_tables(disable_protection=True)
+    WatchlistItem.interface.delete_tables(disable_protection=True)
 
 
 def get_item(item=None, **kwargs):
     if item:
-        body = dict(item.body)
+        body = dict(item.newest.body)
         body.update(kwargs)
         body.setdefault("uuid", item.uuid)
         kwargs = body
@@ -50,6 +50,7 @@ class EmailTest(TestCase):
     def test_order(self):
         em = Email("foo")
 
+        uuid = testdata.get_ascii(16)
         body = {
             "url": "http://foo.com",
             "image": "http://foo.com/bar.jpg",
@@ -59,31 +60,37 @@ class EmailTest(TestCase):
             "title": "expensive",
             "price": 100.00,
         })
-        it = Item(body=dict(body))
-        em.append(it, it)
+        it = Item(uuid=uuid, body=dict(body), price=body["price"])
+        em.cheaper_items.append(it)
 
         body.update({
             "title": "cheaper",
             "price": 10.00,
         })
-        it = Item(body=dict(body))
-        em.append(it, it)
+        it = Item(uuid=uuid, body=dict(body), price=body["price"])
+        em.cheaper_items.append(it)
 
         body.update({
             "title": "cheapest",
             "price": 1.00,
         })
-        it = Item(body=dict(body))
-        em.append(it, it)
+        it = Item(uuid=uuid, body=dict(body), price=body["price"])
+        em.cheaper_items.append(it)
 
         html = em.body_html
         self.assertTrue(html.index("cheapest") < html.index("cheaper") < html.index("expensive"))
 
-    def test_subject(self):
+    def test_subject_total(self):
         em = Email("foo")
-        it = Item(body={"price": 1})
-        em.append(Item(body={"price": 1}), Item(body={"price": 2}))
-        em.append(Item(body={"price": 2}), Item(body={"price": 1}))
+        it = Item(uuid=testdata.get_ascii(16), body={}, price=1)
+
+        it = Item(uuid=testdata.get_ascii(16), body={}, price=2)
+        it.save()
+        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=1).email)
+
+        it = Item(uuid=testdata.get_ascii(16), body={}, price=1)
+        it.save()
+        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=2).email)
 
         self.assertFalse("total" in em.subject)
 
@@ -99,14 +106,13 @@ class EmailTest(TestCase):
             "image": "http://foo.com/bar.jpg",
             "price": 12.34
         }
-        it = Item(body=body)
+        it = Item(uuid=testdata.get_ascii(16), body=body, price=body["price"])
 
-        em.append(it, it)
+        em.cheaper_items.append(it)
 
         with self.assertRaises(UnicodeEncodeError):
             str(em.body_html)
 
-        #em.send()
         str(em.body_html.encode("utf8"))
 
     def test_unicode_email_item(self):
@@ -118,8 +124,8 @@ class EmailTest(TestCase):
             "price": 12.34
         }
 
-        it = Item(body=body)
-        ei = EmailItem(it, it)
+        it = Item(uuid=testdata.get_ascii(16), body=body, price=body["price"])
+        ei = EmailItem(it)
         ei_str = str(ei) # if no error is raised, we pass!
         #pout.v(type(ei_str), ei_str)
         #print ei_str
@@ -148,29 +154,32 @@ class EmailTest(TestCase):
             body=body,
             price=10.00
         )
+        old_item.save()
 
         em = Email("wishlist-name")
-        em.append(old_item, new_item)
+        em.cheaper_items.append(new_item)
 
         #pout.v(em)
         #em.send()
 
     def test_nostock(self):
         nit = get_item(price=0, digital=False)
-        oit = get_item(nit, price=100)
+
         em = Email("wishlist-name")
-        em.append(oit, nit)
+        em.nostock_items.append(nit)
         self.assertTrue("Out of Stock" in em.body_html)
 
         nit = get_item(price=0, digital=True)
         oit = get_item(nit, price=100)
+        oit.save()
         em = Email("wishlist-name")
-        em.append(oit, nit)
+        em.cheaper_items.append(nit)
         self.assertTrue("Lower Priced" in em.body_html)
+
 
 class EmailItemTest(TestCase):
     def test_digital(self):
-        nit = Item.create(
+        nit = Item(
             price=100,
             body={
                 "url": testdata.get_url(),
@@ -180,54 +189,81 @@ class EmailItemTest(TestCase):
             },
             uuid="foo"
         )
-        oit = Item.create(
-            price=200,
-            body=nit.body,
-            uuid=nit.uuid
-        )
 
-        ei = EmailItem(oit, nit)
+        ei = EmailItem(nit)
         self.assertTrue("digital" in "{}".format(ei))
 
 
 class ItemTest(TestCase):
     def test_last(self):
-        it = Item.create(price=10, body={}, uuid="foo")
-        it = Item.create(price=1, body={}, uuid="foo")
-        it = Item.create(price=1000, body={}, uuid="foo")
-        it = Item.create(price=100, body={}, uuid="foo")
+        uuid = testdata.get_hash()
+        it = WatchlistItem.create(price=10, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=1, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=1000, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=100, body={}, uuid=uuid)
 
-        it = Item(price=0, body={}, uuid="foo")
+        it = Item(price=0, body={}, uuid=uuid)
         last = it.last
         self.assertEqual(100, last.price)
 
     def test_cheapest(self):
-        it = Item.create(price=10, body={}, uuid="foo")
-        it = Item.create(price=1, body={}, uuid="foo")
-        it_richest = Item.create(price=1000, body={}, uuid="foo")
-        it = Item.create(price=100, body={}, uuid="foo")
-        it = Item.create(price=0, body={}, uuid="foo")
+        uuid = testdata.get_hash()
+        it = WatchlistItem.create(price=10, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=1, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=100, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=0, body={}, uuid=uuid)
 
-        cheapest = it_richest.cheapest
+        it = Item(price=1000, body={}, uuid=uuid)
+        cheapest = it.cheapest
         self.assertEqual(1, cheapest.price)
 
-    def test_richest(self):
-        it = Item.create(price=10, body={}, uuid="foo")
-        it = Item.create(price=1, body={}, uuid="foo")
-        it_richest = Item.create(price=1000, body={}, uuid="foo")
-        it = Item.create(price=100, body={}, uuid="foo")
-        it = Item.create(price=0, body={}, uuid="foo")
+    def test_is_cheapest(self):
+        uuid = testdata.get_hash()
+        it = WatchlistItem.create(price=100, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=10, body={}, uuid=uuid)
 
+        it = Item(price=1, body={}, uuid=uuid)
+        self.assertTrue(it.is_cheapest())
+        self.assertFalse(it.is_richest())
+
+    def test_is_richest(self):
+        uuid = testdata.get_hash()
+        it = WatchlistItem.create(price=100, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=10, body={}, uuid=uuid)
+
+        it = Item(price=1000, body={}, uuid=uuid)
+        self.assertFalse(it.is_cheapest())
+        self.assertTrue(it.is_richest())
+
+    def test_is_newest(self):
+        uuid = testdata.get_hash()
+        it = Item(price=1000, body={}, uuid=uuid)
+        self.assertTrue(it.is_newest())
+
+        it.save()
+        it = Item(price=100, body={}, uuid=uuid)
+        self.assertFalse(it.is_newest())
+
+    def test_richest(self):
+        uuid = testdata.get_hash()
+        it = WatchlistItem.create(price=10, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=1, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=1000, body={}, uuid=uuid)
+        it = WatchlistItem.create(price=100, body={}, uuid=uuid)
+
+        it = Item(price=0, body={}, uuid=uuid)
         richest = it.richest
         self.assertEqual(1000, richest.price)
 
+
+class WatchlistItemTest(TestCase):
     def test_fset(self):
         uuid = testdata.get_ascii(16)
         body = {
             "uuid": uuid,
             "price": 100.0,
         }
-        it = Item(body=body)
+        it = WatchlistItem(body=body)
         self.assertEqual(10000, it.price)
         self.assertEqual(uuid, it.uuid)
 
@@ -243,14 +279,14 @@ class ItemTest(TestCase):
     def test_multi(self):
         uuid = testdata.get_ascii(16)
 
-        it = Item(
+        it = WatchlistItem(
             uuid=uuid,
             body={"foo": 1},
             price=17.14
         )
         it.save()
 
-        it2 = Item(
+        it2 = WatchlistItem(
             uuid=uuid,
             body={"foo": 1},
             price=17.15
@@ -261,7 +297,7 @@ class ItemTest(TestCase):
         self.assertLess(it.pk, it2.pk)
 
     def test_crud(self):
-        it = Item(
+        it = WatchlistItem(
             uuid=testdata.get_ascii(16),
             body={"foo": 1, "bar": 2},
             price=17.14
@@ -276,13 +312,13 @@ class ItemTest(TestCase):
         self.assertEqual(1714, it.price)
         self.assertEqual({"foo": 1, "bar": 2}, it.body)
 
-        it2 = Item.query.get_pk(it.pk)
+        it2 = WatchlistItem.query.get_pk(it.pk)
         self.assertEqual(1714, it2.price)
         self.assertEqual({"foo": 1, "bar": 2}, it2.body)
         self.assertEqual(it.pk, it2.pk)
 
     def test_price(self):
-        it = Item()
+        it = WatchlistItem()
         it.price = 12.34
         self.assertEqual(1234, it.price)
 

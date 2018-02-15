@@ -39,27 +39,27 @@ class Email(BaseEmail):
         lines = []
         if self.cheaper_items:
             lines.append("<h2>Lower Priced</h2>")
-            self.cheaper_items.sort(key=lambda ei: ei.new_item.price)
-            for ei in self.cheaper_items:
-                lines.append("{}".format(ei))
+            self.cheaper_items.sort(key=lambda i: i.newest.price)
+            for i in self.cheaper_items:
+                lines.append("{}".format(i.email))
 
         if self.richer_items:
             lines.append("<h2>Higher Priced</h2>")
-            self.richer_items.sort(key=lambda ei: ei.new_item.price)
-            for ei in self.richer_items:
-                lines.append("{}".format(ei))
+            self.richer_items.sort(key=lambda i: i.newest.price)
+            for i in self.richer_items:
+                lines.append("{}".format(i.email))
 
         if self.cheapest_items:
             lines.append("<h2>Cheapest</h2>")
-            self.cheapest_items.sort(key=lambda ei: ei.new_item.price)
-            for ei in self.cheapest_items:
-                lines.append("{}".format(ei))
+            self.cheapest_items.sort(key=lambda i: i.newest.price)
+            for i in self.cheapest_items:
+                lines.append("{}".format(i.email))
 
         if self.nostock_items:
             lines.append("<h2>Out of Stock</h2>")
-            self.nostock_items.sort(key=lambda ei: ei.old_item.price)
-            for ei in self.nostock_items:
-                lines.append("{}".format(ei))
+            self.nostock_items.sort(key=lambda i: i.last.price if i.last else 0)
+            for i in self.nostock_items:
+                lines.append("{}".format(i.email))
 
         return "\n".join(lines)
 
@@ -71,23 +71,12 @@ class Email(BaseEmail):
         self.richer_items = []
         self.nostock_items = []
 
-    def append(self, old_item, new_item):
-        ei = EmailItem(old_item, new_item)
-        if ei.is_richer():
-            self.richer_items.append(ei)
-        elif ei.is_stocked():
-            self.cheaper_items.append(ei)
-        elif ei.is_cheapest():
-            self.cheapest_items.append(ei)
-        else:
-            self.nostock_items.append(ei)
-
     def __len__(self):
-        return len(self.cheaper_items) + len(self.richer_items)
+        return len(self.cheaper_items) + len(self.richer_items) + len(self.cheapest_items)
 
-    def __nonzero__(self): return self.__bool__() # 2
     def __bool__(self):
         return len(self) > 0
+    __nonzero__ = __bool__ # 2
 
     def send(self, **kwargs):
         if not self: return None
@@ -96,15 +85,14 @@ class Email(BaseEmail):
 
 
 class EmailItem(object):
-    def __init__(self, old_item, new_item):
-        self.old_item = old_item
-        self.new_item = new_item
-        self.cheapest_item = new_item.cheapest
-        self.richest_item = new_item.richest
+    def __init__(self, item):
+        self.item = item
 
     def __unicode__(self):
-        old_item = self.old_item
-        new_item = self.new_item
+        item = self.item
+        new_item = self.item.newest
+        old_item = self.item.last
+        citem = self.item.cheapest
 
         url = new_item.body["url"]
 
@@ -128,7 +116,7 @@ class EmailItem(object):
             "  <td>"
         )
 
-        if self.is_cheapest():
+        if item.is_cheapest():
             lines.append(
                 "    <h3><a style=\"color:green\" href=\"{}\">{}</a></h3>".format(
                     url,
@@ -136,7 +124,7 @@ class EmailItem(object):
                 )
             )
 
-        elif self.is_richest():
+        elif item.is_richest():
             lines.append(
                 "    <h3><a style=\"color:red\" href=\"{}\">{}</a></h3>".format(
                     url,
@@ -152,20 +140,20 @@ class EmailItem(object):
                 )
             )
 
-        lines.append(
-            "    <p><b>${:.2f}</b>, previously was <b>${:.2f}</b></p>".format(
-                new_item.body["price"],
+        lines.append("    <p>")
+        lines.append("        <b>${:.2f}</b>".format(new_item.body["price"]))
+        if old_item:
+            lines.append("        , previously was <b>${:.2f}</b></p>".format(
                 old_item.body["price"],
-            )
-        )
+            ))
+        lines.append("    </p>")
 
-        if new_item.is_digital():
+        if item.is_digital():
             lines.append(
                 "    <p>This is a digital item</p>"
             )
 
-        if self.cheapest_item:
-            citem = self.cheapest_item
+        if citem:
             lines.append("    <p>Lowest price was <b>${:.2f}</b> on {} ({} times total)</p>".format(
                 citem.body.get("price", 0.0),
                 citem._created.strftime("%Y-%m-%d"),
@@ -200,32 +188,8 @@ class EmailItem(object):
         else:
             return self.__unicode__().encode("UTF-8")
 
-    def is_richer(self):
-        """Return true if the new item is more expensive than the old item"""
-        return self.old_item.price < self.new_item.price
 
-    def is_stocked(self):
-        """Return True if the item is in stock"""
-        return self.new_item.is_stocked()
-
-    def is_cheapest(self):
-        """Return True if the item is the cheapest it's ever been"""
-        ret = False
-        if not self.is_richer():
-            if self.cheapest_item:
-                ret = self.new_item.price == self.cheapest_item.price
-        return ret
-
-    def is_richest(self):
-        """Return True if the item is the richest it's ever been"""
-        ret = False
-        if self.is_richer():
-            if self.richest_item:
-                ret = self.new_item.price == self.richest_item.price
-        return ret
-
-
-class Item(Orm):
+class WatchlistItem(Orm):
 
     table_name = "watchlist_item"
     connection_name = "watchlist"
@@ -251,30 +215,87 @@ class Item(Orm):
         return int(val * 100.0)
 
     @property
-    def cheapest(self):
-        """Return the cheapest record of this item in the db"""
-        return self.query.is_uuid(self.uuid).gt_price(0).asc_price().get_one()
-
-    @property
-    def richest(self):
-        """Return the richest record of this item in the db"""
-        return self.query.is_uuid(self.uuid).gt_price(0).desc_price().get_one()
-
-    @property
-    def last(self):
-        """Return the most recent record of this item in the db"""
-        return self.query.is_uuid(self.uuid).last()
-
-    @property
     def price_count(self):
         """how many times this price has been seen"""
         return self.query.is_uuid(self.uuid).is_price(self.price).count()
 
-    def is_digital(self):
-        """Returns True if this is a digital item like a Kindle book or mp3"""
-        return self.body.get("digital", False)
+
+class Item(object):
+    @property
+    def uuid(self):
+        return self.newest.uuid
+
+    @property
+    def email(self):
+        return EmailItem(self)
+
+    @property
+    def cheapest(self):
+        """Return the cheapest record of this item in the db"""
+        ret = WatchlistItem.query.is_uuid(self.uuid).gt_price(0).asc_price().get_one()
+        self.__dict__["cheapest"] = ret
+        return ret
+
+    @property
+    def richest(self):
+        """Return the richest record of this item in the db"""
+        ret = WatchlistItem.query.is_uuid(self.uuid).gt_price(0).desc_price().get_one()
+        self.__dict__["richest"] = ret
+        return ret
+
+    @property
+    def last(self):
+        """Return the most recent record of this item in the db"""
+        ret = WatchlistItem.query.is_uuid(self.uuid).last()
+        self.__dict__["last"] = ret
+        return ret
+
+    def __init__(self, uuid, body, price, **kwargs):
+        self.newest = WatchlistItem(
+            uuid=uuid,
+            body=body,
+            price=price,
+            **kwargs
+        )
+
+    def is_richer(self):
+        """Return true if the new item is more expensive than the old item"""
+        if not self.is_stocked(): return False
+        last = self.last
+        return last is not None and last.price < self.newest.price
+
+    def is_cheaper(self):
+        if not self.is_stocked(): return False
+        return not self.is_richer()
 
     def is_stocked(self):
         """Return True if the item is in stock"""
-        return self.price or self.is_digital()
+        return self.newest.price or self.is_digital()
+
+    def is_digital(self):
+        """Returns True if this is a digital item like a Kindle book or mp3"""
+        return self.newest.body.get("digital", False)
+
+    def is_cheapest(self):
+        """Return True if the item is the cheapest it's ever been"""
+        ret = False
+        if not self.is_richer() and self.is_stocked():
+            if self.cheapest:
+                ret = self.newest.price <= self.cheapest.price
+        return ret
+
+    def is_richest(self):
+        """Return True if the item is the richest it's ever been"""
+        ret = False
+        if self.is_richer() and self.is_stocked():
+            if self.richest:
+                ret = self.newest.price >= self.richest.price
+        return ret
+
+    def is_newest(self):
+        """Return if there are no other items like this one in the db"""
+        return not WatchlistItem.query.is_uuid(self.uuid).has()
+
+    def save(self):
+        return self.newest.save()
 

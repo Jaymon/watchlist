@@ -29,7 +29,7 @@ from wishlist import Wishlist
 from wishlist.exception import RobotError
 
 from watchlist import __version__
-from watchlist.models import Email, Item
+from watchlist.models import Email, Item, WatchlistItem
 from watchlist.email import Email as ErrorEmail
 
 
@@ -46,12 +46,12 @@ def main(name, dry_run):
 
             # Let's flush out a problem connecting to the DB before getting into
             # the loop
-            Item.interface.connect()
+            WatchlistItem.interface.connect()
 
             w = Wishlist(name)
             for item_count, wi in enumerate(w, item_count):
                 try:
-                    new_item = Item(
+                    item = Item(
                         uuid=wi.uuid,
                         body=wi.jsonable(),
                         price=wi.price
@@ -59,21 +59,39 @@ def main(name, dry_run):
 
                     echo.out("{}. {}", item_count, wi.title)
 
-                    old_item = new_item.last #Item.query.is_uuid(wi.uuid).last()
-                    if old_item:
-                        if new_item.price != old_item.price:
-                            email.append(old_item, new_item)
-                            if not dry_run:
-                                new_item.save()
-                            echo.indent("price has changed from {} to {}".format(
-                                new_item.price,
-                                old_item.price
-                            ))
-
-                    else:
+                    if item.is_newest():
                         echo.indent("This is a new item")
                         if not dry_run:
-                            new_item.save()
+                            item.save()
+
+                    else:
+                        if item.is_richer():
+                            email.richer_items.append(item)
+                            echo.indent("price has gone up from {} to {}".format(
+                                item.last.price,
+                                item.newest.price,
+                            ))
+                            if not dry_run:
+                                item.save()
+
+                        elif item.is_cheaper():
+                            email.cheaper_items.append(item)
+                            echo.indent("price has gone down from {} to {}".format(
+                                item.last.price,
+                                item.newest.price,
+                            ))
+                            if not dry_run:
+                                item.save()
+
+                        elif item.is_cheapest():
+                            email.cheapest_items.append(item)
+                            echo.indent("price is as cheap as it has ever been {}".format(
+                                item.newest.price,
+                            ))
+
+                        elif not item.is_stocked():
+                            email.nostock_items.append(item)
+                            echo.indent("is out of stock")
 
                 except RobotError:
                     raise
