@@ -191,7 +191,22 @@ class EmailItemTest(TestCase):
         )
 
         ei = EmailItem(nit)
-        self.assertTrue("digital" in "{}".format(ei))
+        s = "{}".format(ei)
+        self.assertTrue(" (digital)" in s)
+
+    def test_new_old_price(self):
+        uuid = testdata.get_hash()
+        body = {
+            "url": testdata.get_url(),
+            "title": testdata.get_words(),
+        }
+        oit = WatchlistItem.create(price=10, body=dict(body), uuid=uuid)
+        it = Item(price=1, body=dict(body), uuid=uuid)
+        eit = it.email
+        s = "{}".format(eit)
+        self.assertTrue("<b>$1.00</b>" in s)
+        self.assertTrue("was <b>$10.00</b>" in s)
+
 
 
 class ItemTest(TestCase):
@@ -205,6 +220,20 @@ class ItemTest(TestCase):
         it = Item(price=0, body={}, uuid=uuid)
         last = it.last
         self.assertEqual(100, last.price)
+
+    def test_last_newest_in_db(self):
+        uuid = testdata.get_hash()
+        oit1 = WatchlistItem.create(price=10, body={}, uuid=uuid)
+        oit2 = WatchlistItem.create(price=100, body={}, uuid=uuid)
+
+        it = Item(price=1000, body={}, uuid=uuid)
+        it.save()
+
+        self.assertEqual(it.last.pk, oit2.pk)
+
+        it = Item(price=1000, body={}, uuid=uuid)
+        it.newest = oit2
+        self.assertEqual(it.last.pk, oit1.pk)
 
     def test_cheapest(self):
         uuid = testdata.get_hash()
@@ -278,7 +307,6 @@ class ItemTest(TestCase):
         self.assertTrue(it.is_richest())
 
 
-
 class WatchlistItemTest(TestCase):
     def test_fset(self):
         uuid = testdata.get_ascii(16)
@@ -326,18 +354,25 @@ class WatchlistItemTest(TestCase):
             price=17.14
         )
 
+        def assertSubDict(d1, d2):
+            for k, v in d1.items():
+                self.assertEqual(v, d2[k])
+
         self.assertEqual(1714, it.price)
-        self.assertEqual({"foo": 1, "bar": 2}, it.body)
+        #self.assertEqual({"foo": 1, "bar": 2}, it.body)
+        assertSubDict({"foo": 1, "bar": 2}, it.body)
 
         it.save()
         self.assertLess(0, it.pk)
 
         self.assertEqual(1714, it.price)
-        self.assertEqual({"foo": 1, "bar": 2}, it.body)
+        #self.assertEqual({"foo": 1, "bar": 2}, it.body)
+        assertSubDict({"foo": 1, "bar": 2}, it.body)
 
         it2 = WatchlistItem.query.get_pk(it.pk)
         self.assertEqual(1714, it2.price)
-        self.assertEqual({"foo": 1, "bar": 2}, it2.body)
+        #self.assertEqual({"foo": 1, "bar": 2}, it2.body)
+        assertSubDict({"foo": 1, "bar": 2}, it2.body)
         self.assertEqual(it.pk, it2.pk)
 
     def test_price(self):

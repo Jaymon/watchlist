@@ -116,11 +116,15 @@ class EmailItem(object):
             "  <td>"
         )
 
+        title = new_item.body["title"]
+        if item.is_digital():
+            title += " (digital)"
+
         if item.is_cheapest():
             lines.append(
                 "    <h3><a style=\"color:green\" href=\"{}\">{}</a></h3>".format(
                     url,
-                    new_item.body["title"]
+                    title
                 )
             )
 
@@ -128,7 +132,7 @@ class EmailItem(object):
             lines.append(
                 "    <h3><a style=\"color:red\" href=\"{}\">{}</a></h3>".format(
                     url,
-                    new_item.body["title"]
+                    title
                 )
             )
 
@@ -136,27 +140,22 @@ class EmailItem(object):
             lines.append(
                 "    <h3><a href=\"{}\">{}</a></h3>".format(
                     url,
-                    new_item.body["title"]
+                    title
                 )
             )
 
         lines.append("    <p>")
         lines.append("        <b>${:.2f}</b>".format(new_item.body["price"]))
         if old_item:
-            lines.append("        , previously was <b>${:.2f}</b></p>".format(
+            lines.append("        was <b>${:.2f}</b></p>".format(
                 old_item.body["price"],
             ))
         lines.append("    </p>")
 
-        if item.is_digital():
-            lines.append(
-                "    <p>This is a digital item</p>"
-            )
-
         if citem:
             lines.append("    <p>Lowest price was <b>${:.2f}</b> on {} ({} times total)</p>".format(
                 citem.body.get("price", 0.0),
-                citem._created.strftime("%Y-%m-%d"),
+                citem._created.strftime("%B %d, %Y"),
                 citem.price_count,
             ))
 
@@ -197,6 +196,17 @@ class WatchlistItem(Orm):
     uuid = Field(str, True, max_size=32)
     price = Field(int, True)
     body = ObjectField(True)
+
+    uuid_index = Index("uuid", "price")
+
+    def modify(self, fields, **fields_kwargs):
+        fields = self.modify_fields(fields, **fields_kwargs)
+        if "body" in fields:
+            if "price" in fields:
+                fields["body"].setdefault("price", fields["price"])
+            if "uuid" in fields:
+                fields["body"].setdefault("uuid", fields["uuid"])
+        return super(WatchlistItem, self).modify(fields)
 
     @body.fsetter
     def body(self, val):
@@ -246,7 +256,10 @@ class Item(object):
     @property
     def last(self):
         """Return the most recent record of this item in the db"""
-        ret = WatchlistItem.query.is_uuid(self.uuid).last()
+        if self.newest.pk:
+            ret = WatchlistItem.query.is_uuid(self.uuid).lt_pk(self.newest.pk).desc_pk().first()
+        else:
+            ret = WatchlistItem.query.is_uuid(self.uuid).last()
         self.__dict__["last"] = ret
         return ret
 
