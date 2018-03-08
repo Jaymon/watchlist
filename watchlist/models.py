@@ -50,9 +50,14 @@ class Email(BaseEmail):
                 lines.append("{}".format(i.email))
 
         if self.cheapest_items:
-            lines.append("<h2>Cheapest</h2>")
-            self.cheapest_items.sort(key=lambda i: i.newest.price)
-            for i in self.cheapest_items:
+            self.cheapest_items.sort(key=lambda i: i.cheapest._created)
+
+            lines.append("<h2>Recent Cheapest</h2>")
+            for i in self.cheapest_items[-15:]:
+                lines.append("{}".format(i.email))
+
+            lines.append("<h2>Oldest Cheapest</h2>")
+            for i in self.cheapest_items[0:15]:
                 lines.append("{}".format(i.email))
 
         if self.nostock_items:
@@ -93,6 +98,7 @@ class EmailItem(object):
         new_item = self.item.newest
         old_item = self.item.last
         citem = self.item.cheapest
+        ritem = self.item.richest
 
         url = new_item.body["url"]
 
@@ -152,11 +158,15 @@ class EmailItem(object):
             ))
         lines.append("    </p>")
 
-        if citem:
-            lines.append("    <p>Lowest price was <b>${:.2f}</b> on {} ({} times total)</p>".format(
+        if citem and ritem:
+            format_str = "    <p>range: <b>${:.2f}</b> ({} times, last on {}) to <b>${:.2f}</b> ({} times), {} total price changes</p>"
+            lines.append(format_str.format(
                 citem.body.get("price", 0.0),
-                citem._created.strftime("%B %d, %Y"),
                 citem.price_count,
+                citem._created.strftime("%B %d, %Y"),
+                ritem.body.get("price", 0.0),
+                ritem.price_count,
+                ritem.count,
             ))
 
         lines.append("    <p>")
@@ -228,6 +238,11 @@ class WatchlistItem(Orm):
     def price_count(self):
         """how many times this price has been seen"""
         return self.query.is_uuid(self.uuid).is_price(self.price).count()
+
+    @property
+    def count(self):
+        """how many total price changes there have been"""
+        return self.query.is_uuid(self.uuid).count()
 
 
 class Item(object):
