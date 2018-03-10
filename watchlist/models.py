@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
+import datetime
 
 from prom import Orm, Field, ObjectField, Index
 import sendgrid
@@ -50,7 +51,12 @@ class Email(BaseEmail):
                 lines.append("{}".format(i.email))
 
         if self.cheapest_items:
-            self.cheapest_items.sort(key=lambda i: i.cheapest._created)
+            def sorting(i):
+                ci = i.cheapest
+                return ci._created if ci else datetime.datetime.utcnow()
+
+            #self.cheapest_items.sort(key=lambda i: i.cheapest._created)
+            self.cheapest_items.sort(key=sorting)
 
             lines.append("<h2>Recent Cheapest</h2>")
             for i in self.cheapest_items[-15:]:
