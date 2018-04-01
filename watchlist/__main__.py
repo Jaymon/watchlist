@@ -37,6 +37,13 @@ from watchlist.email import Email as ErrorEmail
 @arg('--dry-run', dest="dry_run", action="store_true", help="Perform a dry run")
 def main(name, dry_run):
     """go through and check wishlist against previous entries"""
+
+    echo.out(
+        "{}. Starting on wishlist {}",
+        datetime.datetime.utcnow(),
+        name,
+    )
+
     name = name[0]
     email = Email(name)
     errors = []
@@ -51,13 +58,13 @@ def main(name, dry_run):
             w = Wishlist(name)
             for item_count, wi in enumerate(w, item_count):
                 try:
+                    echo.out("{}. {}", item_count, wi.title)
+
                     item = Item(
                         uuid=wi.uuid,
                         body=wi.jsonable(),
                         price=wi.price
                     )
-
-                    echo.out("{}. {}", item_count, wi.title)
 
                     if item.is_newest():
                         echo.indent("This is a new item")
@@ -102,6 +109,12 @@ def main(name, dry_run):
 
                     echo.err("{}. Failed!", item_count)
                     echo.exception(e)
+
+                    # bail if we've had a lot of errors or the first N items
+                    # have all resulted in an error
+                    total_errors = len(errors)
+                    if total_errors > 100 or (total_errors > 10 and total_errors == item_count):
+                        break
 
             echo.out(
                 "{}. Done with wishlist, {} total items, {} changes",
