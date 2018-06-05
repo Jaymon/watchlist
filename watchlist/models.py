@@ -2,6 +2,7 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 import datetime
+import bisect
 
 from prom import Orm, Field, ObjectField, Index
 import sendgrid
@@ -11,9 +12,108 @@ from .email import Email as BaseEmail
 from .compat import *
 
 
+class SortedList(list):
+    """Keep a list sorted as you append or extend it
+
+    simpler version of this recipe:
+        https://code.activestate.com/recipes/577197-sortedcollection/
+
+    uses this stdlib:
+        https://docs.python.org/2.7/library/bisect.html
+    """
+    def __init__(self, key=None, reverse=False):
+        self.key = (lambda x: x) if key is None else key
+        self.reverse = reverse
+        self.semaphore = False
+        self._keys = []
+
+    def append(self, x):
+        k = self.key(x)
+        i = bisect.bisect_right(self._keys, k)
+        self.semaphore = True
+        if i is None:
+            super(SortedList, self).append(x)
+            self._keys.append(k)
+        else:
+            self.insert(i, x)
+            self._keys.insert(i, k)
+        self.semaphore = False
+
+    def extend(self, iterable):
+        for x in iterable:
+            self.append(x)
+
+    def insert(self, i, x):
+        if self.semaphore:
+            super(SortedList, self).insert(i, x)
+        else:
+            raise NotImplementedError()
+
+    def remove(self, x):
+        k = self.key(x)
+        self._keys.remove(k)
+        super(SortedList, self).remove(x)
+
+    def pop(self, *args, **kwargs):
+        super(SortedList, self).pop(*args, **kwargs)
+        self._keys.pop(*args, **kwargs)
+
+    def clear(self):
+        super(SortedList, self).clear()
+        self._keys.clear()
+
+    def __getitem__(self, i):
+        if self.reverse:
+            i = -(i + 1)
+        return super(SortedList, self).__getitem__(i)
+
+    def __iter__(self):
+        if self.reverse:
+            for x in reversed(self):
+                yield x
+        else:
+            for x in super(SortedList, self).__iter__():
+                yield x
+
+    def __setitem__(self, x):
+        raise NotImplementedError()
+    def reverse(self):
+        raise NotImplementedError()
+    def sort(self):
+        raise NotImplementedError()
+
+
 class Email(BaseEmail):
     @property
     def subject(self):
+        fmt_args = {
+            "cheaper_count": len(self.cheaper_items),
+            "cheaper_start_price": self.cheaper_items[0].current_pricetag,
+            "cheaper_stop_price": self.cheaper_items[-1].current_pricetag,
+            "name": self.name
+        }
+
+        item_count = self.kwargs.get("item_count", 0)
+        if item_count:
+            fmt_str = [
+                "{cheaper_count}/{item_count} down,"
+            ]
+            fmt_args["item_count"] = item_count
+
+        else:
+            fmt_str = [
+                "{cheaper_count} down,"
+            ]
+
+        fmt_str.append("{cheaper_start_price}-{cheaper_stop_price}")
+
+        fmt_str.append("[wishlist {name}]")
+        return " ".join(fmt_str).format(**fmt_args)
+
+    @property
+    def body_html(self):
+        lines = ["<p>"]
+
         fmt_args = {
             "cheaper_count": len(self.cheaper_items),
             "cheapest_count": len(self.cheapest_items),
@@ -24,7 +124,7 @@ class Email(BaseEmail):
         fmt_str = [
             "{cheaper_count} down,",
             "{cheapest_count} cheapest,",
-            "{richer_count} up,", 
+            "{richer_count} up", 
         ]
 
         item_count = self.kwargs.get("item_count", 0)
@@ -32,55 +132,57 @@ class Email(BaseEmail):
             fmt_str.append("{item_count} total")
             fmt_args["item_count"] = item_count
 
-        fmt_str.append("[wishlist {name}]")
-        return " ".join(fmt_str).format(**fmt_args)
+        lines.append(" ".join(fmt_str).format(**fmt_args))
+        lines.append("</p>")
 
-    @property
-    def body_html(self):
-        lines = []
         if self.cheaper_items:
             lines.append("<h2>Lower Priced</h2>")
-            self.cheaper_items.sort(key=lambda i: i.newest.price)
+            #self.cheaper_items.sort(key=lambda i: i.newest.price)
             for i in self.cheaper_items:
-                lines.append("{}".format(i.email))
+                lines.append(i.html_detail())
 
         if self.richer_items:
             lines.append("<h2>Higher Priced</h2>")
-            self.richer_items.sort(key=lambda i: i.newest.price)
+            #self.richer_items.sort(key=lambda i: i.newest.price)
             for i in self.richer_items:
-                lines.append("{}".format(i.email))
+                lines.append(i.html_summary())
 
         if self.cheapest_items:
-            def sorting(i):
-                ci = i.cheapest
-                return ci._created if ci else datetime.datetime.utcnow()
+#             def sorting(i):
+#                 ci = i.cheapest
+#                 return ci._created if ci else datetime.datetime.utcnow()
 
             #self.cheapest_items.sort(key=lambda i: i.cheapest._created)
-            self.cheapest_items.sort(key=sorting)
+            #self.cheapest_items.sort(key=sorting)
 
             lines.append("<h2>Recent Cheapest</h2>")
             for i in self.cheapest_items[-15:]:
-                lines.append("{}".format(i.email))
+                lines.append(i.html_summary())
 
             lines.append("<h2>Oldest Cheapest</h2>")
             for i in self.cheapest_items[0:15]:
-                lines.append("{}".format(i.email))
+                lines.append(i.html_summary())
 
         if self.nostock_items:
             lines.append("<h2>Out of Stock</h2>")
-            self.nostock_items.sort(key=lambda i: i.last.price if i.last else 0)
+            #self.nostock_items.sort(key=lambda i: i.last.price if i.last else 0)
             for i in self.nostock_items:
-                lines.append("{}".format(i.email))
+                lines.append(i.html_summary())
 
         return "\n".join(lines)
 
     def __init__(self, name):
         self.name = name
         self.kwargs = {}
-        self.cheaper_items = []
-        self.cheapest_items = []
-        self.richer_items = []
-        self.nostock_items = []
+        self.cheaper_items = SortedList(key=lambda i: i.newest.price)
+        self.richer_items = SortedList(key=lambda i: i.newest.price)
+        self.nostock_items = SortedList(key=lambda i: i.last.price if i.last else 0)
+
+        def sorting(i):
+            ci = i.cheapest
+            return ci._created if ci else datetime.datetime.utcnow()
+        self.cheapest_items = SortedList(key=sorting)
+
 
     def __len__(self):
         return len(self.cheaper_items) + len(self.richer_items) + len(self.cheapest_items)
@@ -95,117 +197,13 @@ class Email(BaseEmail):
         return super(Email, self).send()
 
 
-class EmailItem(object):
-    def __init__(self, item):
-        self.item = item
-
-    def __unicode__(self):
-        item = self.item
-        new_item = self.item.newest
-        old_item = self.item.last
-        citem = self.item.cheapest
-        ritem = self.item.richest
-
-        url = new_item.body["url"]
-
-        lines = [
-            "<table>",
-            "<tr>",
-        ]
-
-        image_url = new_item.body.get("image", "")
-        if image_url:
-            lines.extend([
-                "  <td>",
-                "    <a href=\"{}\"><img src=\"{}\"></a>".format(
-                    url,
-                    image_url
-                ),
-                "  </td>",
-            ])
-
-        lines.append(
-            "  <td>"
-        )
-
-        title = new_item.body["title"]
-        if item.is_digital():
-            title += " (digital)"
-
-        if item.is_cheapest():
-            lines.append(
-                "    <h3><a style=\"color:green\" href=\"{}\">{}</a></h3>".format(
-                    url,
-                    title
-                )
-            )
-
-        elif item.is_richest():
-            lines.append(
-                "    <h3><a style=\"color:red\" href=\"{}\">{}</a></h3>".format(
-                    url,
-                    title
-                )
-            )
-
-        else:
-            lines.append(
-                "    <h3><a href=\"{}\">{}</a></h3>".format(
-                    url,
-                    title
-                )
-            )
-
-        lines.append("    <p>")
-        lines.append("        <b>${:.2f}</b>".format(new_item.body["price"]))
-        if old_item:
-            lines.append("        was <b>${:.2f}</b></p>".format(
-                old_item.body["price"],
-            ))
-        lines.append("    </p>")
-
-        if citem and ritem:
-            format_str = "    <p>range: <b>${:.2f}</b> ({} times, last on {}) to <b>${:.2f}</b> ({} times), {} total price changes</p>"
-            lines.append(format_str.format(
-                citem.body.get("price", 0.0),
-                citem.price_count,
-                citem._created.strftime("%B %d, %Y"),
-                ritem.body.get("price", 0.0),
-                ritem.price_count,
-                ritem.count,
-            ))
-
-        lines.append("    <p>")
-        page_url = new_item.body.get("page_url", "")
-        added = new_item.body.get("added", "unknown")
-        if page_url:
-            lines.append("        <a href=\"{}\">added {}</a>".format(page_url, added))
-
-        else:
-            lines.append("        added {}".format(added))
-
-        lines.append("    </p>")
-
-        lines.extend([
-            "    <p>{}</p>".format(new_item.body.get("comment", "")),
-            "  </td>",
-            "</tr>",
-            "</table>",
-        ])
-
-        lines.append("<hr>")
-
-        return "\n".join(lines)
-
-    def __str__(self):
-        if is_py3:
-            return self.__unicode__()
-        else:
-            return self.__unicode__().encode("UTF-8")
-
-
 class WatchlistItem(Orm):
+    """This represents one single price point of the item, anytime the price of the
+    item changes there will be a new row that is represented by this class
 
+    if you want to look at the item as a whole (all its price changes) then you
+    would use the Item class
+    """
     table_name = "watchlist_item"
     connection_name = "watchlist"
 
@@ -250,15 +248,72 @@ class WatchlistItem(Orm):
         """how many total price changes there have been"""
         return self.query.is_uuid(self.uuid).count()
 
+    @property
+    def pricetag(self):
+        """it's price formatted in dollars and cents (so price=100 would be pricetag $1.00)"""
+        price = self.body.get("price", 0.0)
+        pricetag = "${:.2f}".format(price)
+        return pricetag
+
+    def __eq__(self, other):
+        """Defines behavior for the equality operator, ==."""
+        return self.price == other.price
+
+    def __ne__(self, other):
+        """Defines behavior for the inequality operator, !=."""
+        return self.price != other.price
+
+    def __lt__(self, other):
+        """Defines behavior for the less-than operator, <."""
+        return self.price < other.price
+
+    def __gt__(self, other):
+        """Defines behavior for the greater-than operator, >."""
+        return self.price > other.price
+
+    def __le__(self, other):
+        """Defines behavior for the less-than-or-equal-to operator, <=."""
+        return self.price <= other.price
+
+    def __ge__(self, other):
+        """Defines behavior for the greater-than-or-equal-to operator, >=."""
+        return self.price >= other.price
+
 
 class Item(object):
+    """Represents the item as a whole, its entire price history, this is the public
+    interface that takes the information from a wishlist item and converts it into
+    a watchlist item"""
+    @property
+    def current_price(self):
+        return self.newest.price
+
+    @property
+    def current_pricetag(self):
+        return self.newest.pricetag
+
+    @property
+    def title(self):
+        title = self.newest.body["title"]
+        if self.is_digital():
+            title += " (digital)"
+        return title
+
+    @property
+    def color(self):
+        """return a different color depending on if the item is cheapest, richest,
+        or somewhere in the middle"""
+        color = "black"
+        if self.is_cheapest():
+            color = "green"
+
+        elif self.is_richest():
+            color = "red"
+        return color
+
     @property
     def uuid(self):
         return self.newest.uuid
-
-    @property
-    def email(self):
-        return EmailItem(self)
 
     @property
     def cheapest(self):
@@ -340,4 +395,132 @@ class Item(object):
 
     def save(self):
         return self.newest.save()
+
+    def html_detail(self):
+        item = self
+        new_item = self.newest
+        old_item = self.last
+        citem = self.cheapest
+        ritem = self.richest
+
+        url = new_item.body["url"]
+
+        lines = [
+            "<table>",
+            "<tr>",
+        ]
+
+        image_url = new_item.body.get("image", "")
+        if image_url:
+            lines.extend([
+                "  <td>",
+                "    <a href=\"{}\"><img src=\"{}\"></a>".format(
+                    url,
+                    image_url
+                ),
+                "  </td>",
+            ])
+
+        lines.append(
+            "  <td>"
+        )
+
+        title = self.title
+        color = self.color
+        lines.append("    <h3><a style=\"color:{}\" href=\"{}\">{}</a></h3>".format(
+            color,
+            url,
+            title
+        ))
+
+        lines.append("    <p>")
+        lines.append("        <b>{}</b>".format(new_item.pricetag))
+        if old_item:
+            lines.append("        was <b>{}</b></p>".format(
+                old_item.pricetag,
+            ))
+        lines.append("    </p>")
+
+        if citem and ritem:
+            format_str = "    <p>range: <b>{}</b> ({}x, last on {}) to <b>{}</b> ({}x), {}x total changes</p>"
+            lines.append(format_str.format(
+                citem.pricetag,
+                citem.price_count,
+                citem._created.strftime("%B %d, %Y"),
+                ritem.pricetag,
+                ritem.price_count,
+                ritem.count,
+            ))
+
+        lines.append("    <p>")
+        page_url = new_item.body.get("page_url", "")
+        added = new_item.body.get("added", "unknown")
+        if page_url:
+            lines.append("        <a href=\"{}\">added {}</a>".format(page_url, added))
+
+        else:
+            lines.append("        added {}".format(added))
+
+        lines.append("    </p>")
+
+        lines.extend([
+            "    <p>{}</p>".format(new_item.body.get("comment", "")),
+            "  </td>",
+            "</tr>",
+            "</table>",
+        ])
+
+        lines.append("<hr>")
+
+        return "\n".join(lines)
+
+    def html_summary(self):
+        lines = ["<p>"]
+
+        item = self
+        new_item = self.newest
+        old_item = self.last
+        citem = self.cheapest
+        ritem = self.richest
+
+        url = new_item.body["url"]
+
+        title = self.title
+        color = self.color
+        lines.append("    <a style=\"color:{}\" href=\"{}\">{}</a>".format(
+            color,
+            url,
+            title
+        ))
+
+        if citem and ritem:
+            if citem < new_item < ritem:
+                lines.append("    {} < <b>{}</b> < {}".format(citem.pricetag, new_item.pricetag, ritem.pricetag))
+            elif citem == new_item:
+                lines.append("    <b>{}</b> < {}".format(new_item.pricetag, ritem.pricetag))
+            else:
+                lines.append("    {} < <b>{}</b>".format(citem.pricetag, new_item.pricetag))
+
+        else:
+            if old_item:
+                if old_item < new_item:
+                    lines.append("    {} < <b>{}</b>".format(old_item.pricetag, new_item.pricetag))
+                elif old_item > new_item:
+                    lines.append("    <b>{}</b> < {}".format(new_item.pricetag, old_item.pricetag))
+                else:
+                    lines.append("    <b>{}</b>".format(new_item.pricetag))
+            else:
+                lines.append("    <b>{}</b>".format(new_item.pricetag))
+
+        page_url = new_item.body.get("page_url", "")
+        added = new_item.body.get("added", "unknown")
+        if page_url:
+            lines.append("    (<a href=\"{}\">{}</a>)".format(page_url, added))
+
+        else:
+            lines.append("    (added {})".format(added))
+
+        lines.append("</p>")
+        return "\n".join(lines)
+
 

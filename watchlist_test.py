@@ -6,7 +6,7 @@ import os
 import testdata
 from captain.client import Captain
 
-from watchlist.models import Item, Email, EmailItem, WatchlistItem
+from watchlist.models import Item, Email, WatchlistItem, SortedList
 
 
 def setUpModule():
@@ -44,6 +44,23 @@ def get_item(item=None, **kwargs):
         uuid=uuid
     )
     return it
+
+
+class SortedListTest(TestCase):
+    def test_append(self):
+        sl = SortedList(key=lambda x: x[1], reverse=True)
+        sl.append(("foo", 1))
+        sl.append(("foo", 2))
+        sl.append(("foo", 3))
+        self.assertEqual(("foo", 3), sl[0])
+        self.assertEqual(("foo", 1), sl[2])
+
+        sl = SortedList(key=lambda x: x[1])
+        sl.append(("foo", 3))
+        sl.append(("foo", 2))
+        sl.append(("foo", 1))
+        self.assertEqual(("foo", 1), sl[0])
+        self.assertEqual(("foo", 3), sl[2])
 
 
 class EmailTest(TestCase):
@@ -86,16 +103,16 @@ class EmailTest(TestCase):
 
         it = Item(uuid=testdata.get_ascii(16), body={}, price=2)
         it.save()
-        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=1).email)
+        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=1))
 
         it = Item(uuid=testdata.get_ascii(16), body={}, price=1)
         it.save()
-        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=2).email)
+        em.cheaper_items.append(Item(uuid=it.uuid, body={}, price=2))
 
-        self.assertFalse("total" in em.subject)
+        self.assertFalse("/2" in em.subject)
 
         em.kwargs["item_count"] = 2
-        self.assertTrue("total" in em.subject)
+        self.assertTrue("/2" in em.subject)
 
     def test_email_unicode(self):
         em = Email("foo")
@@ -115,20 +132,23 @@ class EmailTest(TestCase):
 
         str(em.body_html.encode("utf8"))
 
-    def test_unicode_email_item(self):
-        body = {
-            "url": "http://foo.com",
-            #"title": "foo",
-            "title": "\u2713",
-            "image": "http://foo.com/bar.jpg",
-            "price": 12.34
-        }
-
-        it = Item(uuid=testdata.get_ascii(16), body=body, price=body["price"])
-        ei = EmailItem(it)
-        ei_str = str(ei) # if no error is raised, we pass!
-        #pout.v(type(ei_str), ei_str)
-        #print ei_str
+# 6-5-2018 - I don't think this test does anything anymore since we merged
+# EmailItem into Item and now the __str__ is just the html_detail() method that
+# returns unicode
+#     def test_unicode_email_item(self):
+#         body = {
+#             "url": "http://foo.com",
+#             #"title": "foo",
+#             "title": "\u2713",
+#             "image": "http://foo.com/bar.jpg",
+#             "price": 12.34
+#         }
+# 
+#         it = Item(uuid=testdata.get_ascii(16), body=body, price=body["price"])
+#         ei = it.html_detail()
+#         ei_str = str(ei) # if no error is raised, we pass!
+#         #pout.v(type(ei_str), ei_str)
+#         #print ei_str
 
     def test_body(self):
         uuid = testdata.get_ascii(16)
@@ -159,7 +179,6 @@ class EmailTest(TestCase):
         em = Email("wishlist-name")
         em.cheaper_items.append(new_item)
 
-        #pout.v(em)
         #em.send()
 
     def test_nostock(self):
@@ -177,7 +196,7 @@ class EmailTest(TestCase):
         self.assertTrue("Lower Priced" in em.body_html)
 
 
-class EmailItemTest(TestCase):
+class ItemTest(TestCase):
     def test_digital(self):
         nit = Item(
             price=100,
@@ -189,10 +208,7 @@ class EmailItemTest(TestCase):
             },
             uuid="foo"
         )
-
-        ei = EmailItem(nit)
-        s = "{}".format(ei)
-        self.assertTrue(" (digital)" in s)
+        self.assertTrue(" (digital)" in nit.title)
 
     def test_new_old_price(self):
         uuid = testdata.get_hash()
@@ -202,14 +218,10 @@ class EmailItemTest(TestCase):
         }
         oit = WatchlistItem.create(price=10, body=dict(body), uuid=uuid)
         it = Item(price=1, body=dict(body), uuid=uuid)
-        eit = it.email
-        s = "{}".format(eit)
+        s = it.html_detail()
         self.assertTrue("<b>$1.00</b>" in s)
         self.assertTrue("was <b>$10.00</b>" in s)
 
-
-
-class ItemTest(TestCase):
     def test_last(self):
         uuid = testdata.get_hash()
         it = WatchlistItem.create(price=10, body={}, uuid=uuid)
