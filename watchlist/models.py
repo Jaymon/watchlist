@@ -339,13 +339,21 @@ class Item(object):
         self.__dict__["last"] = ret
         return ret
 
-    def __init__(self, uuid, body, price, **kwargs):
+    def __init__(self, uuid, body, price, element=None, **kwargs):
+        """
+        :param uuid: string, the amazon uuid of the item
+        :param body: dict, the wishlist element jsonable
+        :param price: number, the price of the item
+        :param item: the original wishlist.WishlistElement instance
+        """
         self.newest = WatchlistItem(
             uuid=uuid,
             body=body,
             price=price,
             **kwargs
         )
+
+        self.element = element
 
     def is_richer(self):
         """Return true if the new item is more expensive than the old item"""
@@ -456,7 +464,7 @@ class Item(object):
         page_url = new_item.body.get("page_url", "")
         added = new_item.body.get("added", "unknown")
         if page_url:
-            lines.append("        <a href=\"{}\">added {}</a>".format(page_url, added))
+            lines.append("        <a href=\"{}\">added {}, p{}</a>".format(page_url, added, self.element.page))
 
         else:
             lines.append("        added {}".format(added))

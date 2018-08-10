@@ -51,19 +51,20 @@ def main(name, dry_run):
     try:
         try:
 
-            # Let's flush out a problem connecting to the DB before getting into
+            # Let's flush out any problems connecting to the DB before getting into
             # the loop
             WatchlistItem.interface.connect()
 
             w = Wishlist(name)
-            for item_count, wi in enumerate(w, item_count):
+            for item_count, we in enumerate(w, item_count):
                 try:
-                    echo.out("{}. {}", item_count, wi.title)
+                    echo.out("{}. (p{}) {}", item_count, we.page, we.title)
 
                     item = Item(
-                        uuid=wi.uuid,
-                        body=wi.jsonable(),
-                        price=wi.price
+                        uuid=we.uuid,
+                        body=we.jsonable(),
+                        price=we.price,
+                        element=we,
                     )
 
                     if item.is_newest():
