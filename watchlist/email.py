@@ -1,9 +1,14 @@
 from __future__ import unicode_literals
 import os
-from bs4 import BeautifulSoup
+import logging
+import traceback
 
 import sendgrid
 from sendgrid.helpers.mail import Email as EmailAddr, Content, Mail, Personalization
+from brow.utils import Soup
+
+
+logger = logging.getLogger(__name__)
 
 
 class Email(object):
@@ -19,7 +24,7 @@ class Email(object):
             body = ""
             html = self.body_html
             if html:
-                body_texts = [text for text in BeautifulSoup(html, "html.parser").stripped_strings]
+                body_texts = [text for text in Soup(html).stripped_strings]
                 body = " ".join(body_texts)
         return body
 
@@ -71,5 +76,23 @@ class Email(object):
         lines.append("BODY TEXT: {}".format(self.body_text))
 
         return "\n".join(lines)
+
+
+class ErrorEmail(Email):
+    def __init__(self, errors):
+        subject = "{} errors raised".format(len(errors))
+        logger.error(subject)
+
+        self.subject = subject
+        body = []
+
+        for e, sys_exc_info in errors:
+            exc_type, exc_value, exc_traceback = sys_exc_info
+            stacktrace = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            body.append(str(e))
+            body.append("".join(stacktrace))
+            body.append("")
+
+        self.body_text = "\n".join(body)
 
 

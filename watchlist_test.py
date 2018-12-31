@@ -6,7 +6,7 @@ import os
 import testdata
 from captain.client import Captain
 
-from watchlist.models import Item, Email, WatchlistItem, SortedList
+from watchlist.models import Item, Email, WatchlistItem, SortedList, Filepath
 
 
 def setUpModule():
@@ -44,6 +44,14 @@ def get_item(item=None, **kwargs):
         uuid=uuid
     )
     return it
+
+
+class FilepathTest(TestCase):
+    def test_write(self):
+        path = testdata.get_file("foo/fptw.html")
+        fp = Filepath(path)
+        fp.write("testing")
+        self.assertEqual("testing", path.contents())
 
 
 class SortedListTest(TestCase):

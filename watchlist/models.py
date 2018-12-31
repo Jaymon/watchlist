@@ -3,13 +3,40 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import os
 import datetime
 import bisect
+from distutils import dir_util
+import codecs
+import logging
 
 from prom import Orm, Field, ObjectField, Index
 import sendgrid
 from bs4 import BeautifulSoup
 
-from .email import Email as BaseEmail
+from .email import Email as BaseEmail, ErrorEmail
 from .compat import *
+from . import environ
+
+
+logger = logging.getLogger(__name__)
+
+
+class Filepath(object):
+    @property
+    def directory(self):
+        return os.path.dirname(self.path)
+
+    def __init__(self, *bits):
+        self.path = os.path.join(*bits)
+        self.encoding = "UTF-8"
+
+    def write(self, contents):
+        dir_util.mkpath(self.directory)
+        with self.open("w+") as f:
+            return f.write(contents)
+
+    def open(self, mode=""):
+        if not mode:
+            mode = "r"
+        return codecs.open(self.path, encoding=self.encoding, mode=mode)
 
 
 class SortedList(list):
@@ -171,18 +198,37 @@ class Email(BaseEmail):
 
         return "\n".join(lines)
 
+    @property
+    def html(self):
+        title = self.subject
+        body = self.body_html
+        return "\n".join([
+            "<!DOCTYPE html>",
+            "<html>",
+            "<head>",
+            '<meta charset="utf-8" />',
+            "<title>{}</title>".format(title),
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />',
+            "</head>",
+            "<body>",
+            "<h1>{}</h1>".format(title),
+            "<div>{}</div>".format(body),
+            "</body>",
+            "</html>",
+        ])
+
     def __init__(self, name):
         self.name = name
         self.kwargs = {}
         self.cheaper_items = SortedList(key=lambda i: i.newest.price)
         self.richer_items = SortedList(key=lambda i: i.newest.price)
         self.nostock_items = SortedList(key=lambda i: i.last.price if i.last else 0)
+        self.errors = []
 
         def sorting(i):
             ci = i.cheapest
             return ci._created if ci else datetime.datetime.utcnow()
         self.cheapest_items = SortedList(key=sorting)
-
 
     def __len__(self):
         return len(self.cheaper_items) + len(self.richer_items) + len(self.cheapest_items)
@@ -192,9 +238,26 @@ class Email(BaseEmail):
     __nonzero__ = __bool__ # 2
 
     def send(self, **kwargs):
-        if not self: return None
-        self.kwargs.update(kwargs)
-        return super(Email, self).send()
+        if self.errors:
+            logger.warning("There were {} errors".format(len(self.errors)))
+            try:
+                em = ErrorEmail(self.errors)
+
+                if environ.ERROR_PATH:
+                    fp = Filepath(environ.ERROR_PATH)
+                    fp.write(em.body_text)
+                em.send()
+
+            except Exception as e:
+                logger.exception(e)
+
+        if self:
+            self.kwargs.update(kwargs)
+            if environ.SUCCESS_PATH:
+                fp = Filepath(environ.SUCCESS_PATH)
+                fp.write(self.html)
+            logger.warning("Sending successful email to {}".format(self.to_email))
+            return super(Email, self).send()
 
 
 class WatchlistItem(Orm):
@@ -213,14 +276,13 @@ class WatchlistItem(Orm):
 
     uuid_index = Index("uuid", "price")
 
-    def modify(self, fields, **fields_kwargs):
-        fields = self.modify_fields(fields, **fields_kwargs)
+    def _modify(self, fields):
         if "body" in fields:
             if "price" in fields:
                 fields["body"].setdefault("price", fields["price"])
             if "uuid" in fields:
                 fields["body"].setdefault("uuid", fields["uuid"])
-        return super(WatchlistItem, self).modify(fields)
+        return fields
 
     @body.fsetter
     def body(self, val):
@@ -353,7 +415,12 @@ class Item(object):
             **kwargs
         )
 
-        self.element = element
+        # NOTE: we CANNOT save the element because it will cause a memory leak
+        # with big wishlists, so just save the things you want from the element
+        # right here
+        #self.element = element
+        self.page = element.page if element else 0
+
 
     def is_richer(self):
         """Return true if the new item is more expensive than the old item"""
@@ -464,7 +531,7 @@ class Item(object):
         page_url = new_item.body.get("page_url", "")
         added = new_item.body.get("added", "unknown")
         if page_url:
-            lines.append("        <a href=\"{}\">added {}, p{}</a>".format(page_url, added, self.element.page))
+            lines.append("        <a href=\"{}\">added {}, p{}</a>".format(page_url, added, self.page))
 
         else:
             lines.append("        added {}".format(added))
