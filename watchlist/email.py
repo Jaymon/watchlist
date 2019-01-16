@@ -50,8 +50,8 @@ class Email(object):
         response = None
         # https://github.com/sendgrid/sendgrid-python/blob/master/examples/helpers/mail/mail_example.py
         mail = Mail()
-        mail.set_from(EmailAddr(self.from_email))
-        mail.set_subject(self.subject)
+        mail.from_email = EmailAddr(self.from_email)
+        mail.subject = self.subject
 
         personalization = Personalization()
         personalization.add_to(EmailAddr(self.to_email))
@@ -62,7 +62,12 @@ class Email(object):
         if body_html:
             mail.add_content(Content("text/html", self.body_html))
 
+        # on success it returns 202
+        # https://sendgrid.com/docs/API_Reference/api_v3.html
         response = self.interface.client.mail.send.post(request_body=mail.get())
+        if response.status_code >= 400:
+            raise SendError(response)
+
         return response
 
     def __str__(self):
@@ -95,4 +100,17 @@ class ErrorEmail(Email):
 
         self.body_text = "\n".join(body)
 
+
+
+class SendError(Exception):
+    def __init__(self, response):
+        self.errno = response.status_code
+
+        msg = []
+        errors = response.body.get("errors", {})
+        for err_d in errors:
+            msg.append(err_d.get("message", ""))
+
+        self.response = response
+        super(SendError, self).__init__("\n\n".join(msg))
 

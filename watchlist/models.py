@@ -145,13 +145,15 @@ class Email(BaseEmail):
             "cheaper_count": len(self.cheaper_items),
             "cheapest_count": len(self.cheapest_items),
             "richer_count": len(self.richer_items),
-            "name": self.name
+            "name": self.name,
+            "date": datetime.datetime.now().date().strftime("%Y-%m-%d"),
         }
 
         fmt_str = [
+            "{date}:",
             "{cheaper_count} down,",
             "{cheapest_count} cheapest,",
-            "{richer_count} up", 
+            "{richer_count} up",
         ]
 
         item_count = self.kwargs.get("item_count", 0)
@@ -168,6 +170,17 @@ class Email(BaseEmail):
             for i in self.cheaper_items:
                 lines.append(i.html_detail())
 
+        return "\n".join(lines)
+
+    @property
+    def html(self):
+        """the full html for like a website, not an email"""
+        try:
+            title = self.subject
+        except IndexError:
+            title = ""
+
+        lines = [self.body_html]
         if self.richer_items:
             lines.append("<h2>Higher Priced</h2>")
             #self.richer_items.sort(key=lambda i: i.newest.price)
@@ -175,19 +188,8 @@ class Email(BaseEmail):
                 lines.append(i.html_summary())
 
         if self.cheapest_items:
-#             def sorting(i):
-#                 ci = i.cheapest
-#                 return ci._created if ci else datetime.datetime.utcnow()
-
-            #self.cheapest_items.sort(key=lambda i: i.cheapest._created)
-            #self.cheapest_items.sort(key=sorting)
-
-            lines.append("<h2>Recent Cheapest</h2>")
-            for i in self.cheapest_items[-15:]:
-                lines.append(i.html_summary())
-
-            lines.append("<h2>Oldest Cheapest</h2>")
-            for i in self.cheapest_items[0:15]:
+            lines.append("<h2>Cheapest</h2>")
+            for i in self.cheapest_items:
                 lines.append(i.html_summary())
 
         if self.nostock_items:
@@ -196,12 +198,8 @@ class Email(BaseEmail):
             for i in self.nostock_items:
                 lines.append(i.html_summary())
 
-        return "\n".join(lines)
+        body = "\n".join(lines)
 
-    @property
-    def html(self):
-        title = self.subject
-        body = self.body_html
         return "\n".join([
             "<!DOCTYPE html>",
             "<html>",

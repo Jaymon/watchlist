@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-from unittest import TestCase
 import os
 
 import testdata
+from testdata import TestCase
 from captain.client import Captain
 
 from watchlist.models import Item, Email, WatchlistItem, SortedList, Filepath
+from watchlist.email import Email as EmailApi
 
 
 def setUpModule():
@@ -194,7 +195,7 @@ class EmailTest(TestCase):
 
         em = Email("wishlist-name")
         em.nostock_items.append(nit)
-        self.assertTrue("Out of Stock" in em.body_html)
+        self.assertTrue("Out of Stock" in em.html)
 
         nit = get_item(price=0, digital=True)
         oit = get_item(nit, price=100)
@@ -411,12 +412,22 @@ class MainTest(TestCase):
         same error over and over, this makes sure that Watchlist will fail once
         if it can't connect to the db
         """
-        c = Captain("watchlist")
-        c.cmd_prefix = "python -m"
-
         environ = dict(os.environ)
         environ["PROM_DSN"] = "prom.interface.sqlite.SQLite:///watchlist.db#watchlist"
-        c.env = environ
-        r = c.run("foobar --dry-run")
+
+        c = testdata.client.ModuleCommand("watchlist", environ=environ)
+
+        r = c.run("foobar --dry-run", code=1)
         self.assertTrue("unable to open database file" in r)
+
+
+class EmailApiTest(TestCase):
+    @TestCase.skipUnless(bool(int(os.environ.get("SEND_EMAIL", 0))))
+    def test_sending(self):
+        em = EmailApi()
+        em.subject = "testing email sending from watchlist_test"
+        em.body_text = "This is the body"
+        r = em.send() # if no error was raised you should check your email
+        #pout.v(r)
+
 
