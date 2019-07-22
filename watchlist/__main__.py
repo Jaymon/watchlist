@@ -22,7 +22,7 @@ logger.setLevel(logging.DEBUG)
 #pl.setLevel(logging.CRITICAL)
 
 
-from captain import echo, exit as console, ArgError
+from captain import echo, exit, ArgError
 from captain.decorators import arg, args
 from wishlist import Wishlist
 from wishlist.exception import RobotError
@@ -125,6 +125,10 @@ def main(name, dry_run):
 
     if not dry_run:
         email.send(item_count=item_count)
+
+
+def console():
+    exit(__name__)
 
 if __name__ == "__main__":
     console()
